@@ -1,0 +1,18 @@
+name: firestore_api_flutter
+description: "A new Flutter project."
+version: 0.0.1
+homepage: 
+environment:
+  sdk: ^3.5.0-315.0.dev
+  flutter: ">=1.17.0"
+dependencies:
+  cloud_firestore: ">=4.0.0"
+  firestore_api: # ">=1.0.0"
+    path: ../firestore_api
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+flutter:

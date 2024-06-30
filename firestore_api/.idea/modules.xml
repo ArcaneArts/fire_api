@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/firestore_api.iml" filepath="$PROJECT_DIR$/firestore_api.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../firestore_api_dart/firestore_api_dart.iml" filepath="$PROJECT_DIR$/../firestore_api_dart/firestore_api_dart.iml" />
+      <module fileurl="file://$PROJECT_DIR$/firestore_api_firebase/firestore_api_firebase.iml" filepath="$PROJECT_DIR$/firestore_api_firebase/firestore_api_firebase.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../firestore_api_flutter/firestore_api_flutter.iml" filepath="$PROJECT_DIR$/../firestore_api_flutter/firestore_api_flutter.iml" />
+    </modules>
+  </component>
+</project>
