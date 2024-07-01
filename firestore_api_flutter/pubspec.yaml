@@ -1,14 +1,12 @@
-name: firestore_api_flutter
-description: "A new Flutter project."
-version: 0.0.1
-homepage: 
+name: fire_api_flutter
+description: "An implementation for fire_api for flutter apps using cloud_firestore."
+version: 1.0.0
+repository: https://github.com/ArcaneArts/firestore_api/tree/main/firestore_api_flutter
 environment:
-  sdk: ^3.5.0-315.0.dev
-  flutter: ">=1.17.0"
+  sdk: '>=3.0.0 <4.0.0'
 dependencies:
   cloud_firestore: ">=4.0.0"
-  firestore_api: # ">=1.0.0"
-    path: ../firestore_api
+  fire_api: ^1.0.1
   flutter:
     sdk: flutter
 dev_dependencies:

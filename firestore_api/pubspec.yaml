@@ -1,8 +1,8 @@
-name: firestore_api
-description: A starting point for Dart libraries or applications.
-version: 1.0.0
+name: fire_api
+description: "A stripped down interface for firestore databases which allows both dart servers using `fire_api_dart` and flutter apps using `fire_api_flutter` to use the same api."
+version: 1.0.1
+repository: https://github.com/ArcaneArts/firestore_api/tree/main/firestore_api
 environment:
-  sdk: ^3.5.0-315.0.dev
-dependencies:
+  sdk: '>=3.0.0 <4.0.0'
 dev_dependencies:
   lints: ^4.0.0

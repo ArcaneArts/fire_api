@@ -1,39 +1,20 @@
-<!-- 
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
-
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/tools/pub/writing-package-pages). 
-
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/to/develop-packages). 
--->
-
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
-
-## Features
-
-TODO: List what your package can do. Maybe include images, gifs, or videos.
-
-## Getting started
-
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+This is a dart implementation for [fire_api](https://pub.dev/packages/fire_api)
 
 ## Usage
+To use Firestore, you need to either make sure you are running in a google cloud environment or provide a service account key file.
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder. 
+If you are not running on google and want to easily test ensure the following environment variables are set when running. (in intellij, you can set them in the run configuration)
+1. GCP_PROJECT=<project_id>
+2. GOOGLE_APPLICATION_CREDENTIALS=<path_to_service_account_key.json>
+
+If you need a custom database name, other than "(default)", or a custom AuthClient you can use the `GoogleCloudFirestoreDatabase.create(database: "mydbname", auth: AuthClient)` to override.
 
 ```dart
-const like = 'sample';
+import 'package:fire_api_dart/fire_api_dart.dart';
+
+void main() async {
+  // You need to await this because using auth credentials requires async
+  await GoogleCloudFirestoreDatabase.create();
+}
+
 ```
-
-## Additional information
-
-TODO: Tell users more about the package: where to find more information, how to 
-contribute to the package, how to file issues, what response they can expect 
-from the package authors, and more.

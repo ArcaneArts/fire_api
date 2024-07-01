@@ -1,7 +1,7 @@
-library firestore_api_flutter;
+library fire_api_flutter;
 
 import 'package:cloud_firestore/cloud_firestore.dart' as cf;
-import 'package:firestore_api/firestore_api.dart';
+import 'package:fire_api/fire_api.dart';
 
 DocumentReference _doc(
         FirestoreDatabase db, cf.DocumentReference<DocumentData> ref) =>
@@ -48,10 +48,7 @@ extension _XCollectionReference on CollectionReference {
 }
 
 class FirebaseFirestoreDatabase extends FirestoreDatabase {
-  @override
-  Future<double> avgFieldInCollection(
-          CollectionReference reference, String field) =>
-      throw UnimplementedError();
+  static FirestoreDatabase create() => FirebaseFirestoreDatabase();
 
   @override
   Future<int> countDocumentsInCollection(CollectionReference reference) =>
@@ -91,11 +88,6 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
           .toList());
 
   @override
-  Future<double> sumFieldInCollection(
-          CollectionReference reference, String field) =>
-      throw UnimplementedError();
-
-  @override
   Future<void> updateDocument(DocumentReference ref, DocumentData data) =>
       ref._ref.update(data.map((k, v) {
         if (v is FieldValue) {
@@ -119,7 +111,7 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       }));
 
   @override
-  Future<void> updateDocumentTransaction(DocumentReference ref,
+  Future<void> setDocumentAtomic(DocumentReference ref,
           DocumentData Function(DocumentData? data) txn) =>
       cf.FirebaseFirestore.instance.runTransaction((t) async {
         cf.DocumentSnapshot<DocumentData> fromDb = await t.get(ref._ref);

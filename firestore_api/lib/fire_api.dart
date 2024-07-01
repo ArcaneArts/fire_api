@@ -1,4 +1,4 @@
-library firestore_api;
+library fire_api;
 
 typedef DocumentData = Map<String, dynamic>;
 
@@ -18,12 +18,6 @@ abstract class FirestoreDatabase {
 
   Future<int> countDocumentsInCollection(CollectionReference reference);
 
-  Future<double> sumFieldInCollection(
-      CollectionReference reference, String field);
-
-  Future<double> avgFieldInCollection(
-      CollectionReference reference, String field);
-
   Future<List<DocumentSnapshot>> getDocumentsInCollection(
       CollectionReference reference);
 
@@ -40,7 +34,7 @@ abstract class FirestoreDatabase {
 
   Future<void> updateDocument(DocumentReference ref, DocumentData data);
 
-  Future<void> updateDocumentTransaction(
+  Future<void> setDocumentAtomic(
       DocumentReference ref, DocumentData Function(DocumentData? data) txn);
 }
 
@@ -154,6 +148,8 @@ class CollectionReference extends FirestoreReference {
       db.streamDocumentsInCollection(this);
 
   Future<List<DocumentSnapshot>> get() => db.getDocumentsInCollection(this);
+
+  Future<int> count() => db.countDocumentsInCollection(this);
 }
 
 class DocumentReference extends FirestoreReference {
@@ -172,9 +168,8 @@ class DocumentReference extends FirestoreReference {
 
   Future<void> update(DocumentData data) => db.updateDocument(this, data);
 
-  Future<void> updateTransaction(
-          DocumentData Function(DocumentData? data) txn) =>
-      db.updateDocumentTransaction(this, txn);
+  Future<void> setAtomic(DocumentData Function(DocumentData? data) txn) =>
+      db.setDocumentAtomic(this, txn);
 }
 
 enum FieldValueType {
