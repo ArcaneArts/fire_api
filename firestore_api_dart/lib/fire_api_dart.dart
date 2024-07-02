@@ -75,7 +75,7 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
               RunQueryRequest(
                 structuredQuery: reference.toQuery,
               ),
-              _dbx)
+              _dx)
           .then((r) => r
               .map((i) => DocumentSnapshot(
                   reference.doc(i.document!.name!.split("/").last),
@@ -87,7 +87,7 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
   Future<void> setDocumentAtomic(DocumentReference ref,
       DocumentData Function(DocumentData? data) txn) async {
     String txnId =
-        (await _documents.beginTransaction(BeginTransactionRequest(), database))
+        (await _documents.beginTransaction(BeginTransactionRequest(), _dbx))
             .transaction!;
     DocumentData? data =
         (await _documents.get("$_dx/${ref.path}", transaction: txnId)).data;
@@ -152,7 +152,7 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
   Future<void> updateDocument(DocumentReference ref, DocumentData data) =>
       _documents.commit(
           CommitRequest(writes: [
-            if (data.values.any((e) => e.value is FieldValue))
+            if (data.values.any((e) => e is FieldValue))
               Write(
                 transform: DocumentTransform(
                   document: "$_dx/${ref.path}",
@@ -201,11 +201,18 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
                   ],
                 ),
               ),
-            if (data.values.any((e) => e.value is! FieldValue))
+            if (data.values.any((e) => e is! FieldValue))
               Write(
+                updateMask: DocumentMask(
+                    fieldPaths: data.entries
+                        .where((e) => e.value is! FieldValue)
+                        .map((e) => e.key)
+                        .toList()),
                 update: Document(
                   name: "$_dx/${ref.path}",
-                  fields: data._toValueMap(),
+                  fields: Map.fromEntries(
+                          data.entries.where((e) => e.value is! FieldValue))
+                      ._toValueMap(),
                 ),
               ),
           ]),
@@ -222,53 +229,48 @@ extension _XClause on Clause {
 
 extension _XCollectionReference on CollectionReference {
   StructuredQuery get toQuery => StructuredQuery(
-          from: [
-            CollectionSelector(
-                collectionId:
-                    "${(db as GoogleCloudFirestoreDatabase)._dx}/$path")
-          ],
-          limit: qLimit,
-          startAt: qStartAt?.metadata is Document
+      from: [CollectionSelector(collectionId: id)],
+      limit: qLimit,
+      startAt: qStartAt?.metadata is Document
+          ? Cursor(
+              values: (qStartAt!.metadata.data ?? {}).values.toList(),
+              before: false)
+          : qStartAfter?.metadata is Document
               ? Cursor(
-                  values: (qStartAt!.metadata.data ?? {}).values.toList(),
-                  before: false)
-              : qStartAfter?.metadata is Document
-                  ? Cursor(
-                      values:
-                          (qStartAfter!.metadata.data ?? {}).values.toList(),
-                      before: true,
-                    )
-                  : null,
-          endAt: qEndAt?.metadata is Document
-              ? Cursor(
-                  values: (qEndAt!.metadata.data ?? {}).values.toList(),
-                  before: true)
-              : qEndBefore?.metadata is Document
-                  ? Cursor(
-                      values: (qEndBefore!.metadata.data ?? {}).values.toList(),
-                      before: false,
-                    )
-                  : null,
-          orderBy: qOrderBy != null
-              ? [
-                  Order(
-                    direction: descending ? "DESCENDING" : "ASCENDING",
-                    field: FieldReference(fieldPath: qOrderBy),
-                  )
-                ]
-              : null,
-          where: clauses.isNotEmpty
-              ? Filter(
-                  compositeFilter: clauses.length > 1
-                      ? CompositeFilter(
-                          op: "AND",
-                          filters: clauses
-                              .map((e) => Filter(fieldFilter: e.toFilter))
-                              .toList())
-                      : null,
-                  fieldFilter: clauses.length == 1 ? clauses[0].toFilter : null,
+                  values: (qStartAfter!.metadata.data ?? {}).values.toList(),
+                  before: true,
                 )
-              : null);
+              : null,
+      endAt: qEndAt?.metadata is Document
+          ? Cursor(
+              values: (qEndAt!.metadata.data ?? {}).values.toList(),
+              before: true)
+          : qEndBefore?.metadata is Document
+              ? Cursor(
+                  values: (qEndBefore!.metadata.data ?? {}).values.toList(),
+                  before: false,
+                )
+              : null,
+      orderBy: qOrderBy != null
+          ? [
+              Order(
+                direction: descending ? "DESCENDING" : "ASCENDING",
+                field: FieldReference(fieldPath: qOrderBy),
+              )
+            ]
+          : null,
+      where: clauses.isNotEmpty
+          ? Filter(
+              compositeFilter: clauses.length > 1
+                  ? CompositeFilter(
+                      op: "AND",
+                      filters: clauses
+                          .map((e) => Filter(fieldFilter: e.toFilter))
+                          .toList())
+                  : null,
+              fieldFilter: clauses.length == 1 ? clauses[0].toFilter : null,
+            )
+          : null);
 }
 
 extension _XFieldOp on ClauseOperator {

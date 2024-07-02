@@ -41,6 +41,7 @@ abstract class FirestoreDatabase {
 class FirestoreReference {
   final FirestoreDatabase db;
   final String path;
+  String get id => path.split('/').last;
 
   FirestoreReference(this.path, this.db);
 }
@@ -49,6 +50,8 @@ class DocumentSnapshot {
   final DocumentReference reference;
   final DocumentData? data;
   final dynamic metadata;
+  String get id => reference.id;
+  String get path => reference.path;
 
   DocumentSnapshot(this.reference, this.data, [this.metadata]);
 

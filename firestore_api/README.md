@@ -13,7 +13,7 @@ A stripped down interface for firestore databases which allows both dart servers
 | SetAtomic (txn getThenSet)        | ✅ | ✅ |
 | Stream Documents                  | ✅ | ❌ |
 | Stream Collection Queries         | ✅ | ❌ |
-| Start/End At/After/Before Queries | ⌛ | ⌛ |
+| Start/End At/After/Before Queries | ✅ | ✅ |
 
 ## Flutter Setup
 

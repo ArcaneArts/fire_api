@@ -1,3 +1,9 @@
+## 1.1.1
+
+* Fixed collection queries referencing the wrong collection id (used path)
+* Fixed atomic sets not specifying the db correctly
+* Fixed updates not correctly applying when mixing field values and non field values
+
 ## 1.1.0
 
 * Support snapshot metadata storage for later usage

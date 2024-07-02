@@ -1,3 +1,7 @@
+## 1.1.1
+
+* Fix transactions
+
 ## 1.1.0
 
 * Support snapshot metadata storage for later usage
