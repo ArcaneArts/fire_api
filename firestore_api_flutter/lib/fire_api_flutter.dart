@@ -43,6 +43,22 @@ extension _XCollectionReference on CollectionReference {
       d = d.limit(qLimit!);
     }
 
+    if (qStartAfter?.metadata != null) {
+      d = d.startAfterDocument(qStartAfter!.metadata);
+    }
+
+    if (qEndBefore?.metadata != null) {
+      d = d.endBeforeDocument(qEndBefore!.metadata);
+    }
+
+    if (qStartAt?.metadata != null) {
+      d = d.startAtDocument(qStartAt!.metadata);
+    }
+
+    if (qEndAt?.metadata != null) {
+      d = d.endAtDocument(qEndAt!.metadata);
+    }
+
     return d;
   }
 }
@@ -59,15 +75,15 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
 
   @override
   Future<DocumentSnapshot> getDocument(DocumentReference ref) =>
-      ref._ref.get().then(
-          (value) => DocumentSnapshot(ref, value.exists ? value.data() : null));
+      ref._ref.get().then((value) =>
+          DocumentSnapshot(ref, value.exists ? value.data() : null, value));
 
   @override
   Future<List<DocumentSnapshot>> getDocumentsInCollection(
           CollectionReference reference) =>
       reference._ref.get().then((value) => value.docs
           .map((e) => DocumentSnapshot(
-              _doc(this, e.reference), e.exists ? e.data() : null))
+              _doc(this, e.reference), e.exists ? e.data() : null, e))
           .toList());
 
   @override
@@ -76,15 +92,15 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
 
   @override
   Stream<DocumentSnapshot> streamDocument(DocumentReference ref) =>
-      ref._ref.snapshots().map(
-          (event) => DocumentSnapshot(ref, event.exists ? event.data() : null));
+      ref._ref.snapshots().map((event) =>
+          DocumentSnapshot(ref, event.exists ? event.data() : null, event));
 
   @override
   Stream<List<DocumentSnapshot>> streamDocumentsInCollection(
           CollectionReference reference) =>
       reference._ref.snapshots().map((event) => event.docs
           .map((e) => DocumentSnapshot(
-              _doc(this, e.reference), e.exists ? e.data() : null))
+              _doc(this, e.reference), e.exists ? e.data() : null, e))
           .toList());
 
   @override

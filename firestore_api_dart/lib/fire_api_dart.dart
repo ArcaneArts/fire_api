@@ -79,7 +79,8 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
           .then((r) => r
               .map((i) => DocumentSnapshot(
                   reference.doc(i.document!.name!.split("/").last),
-                  i.document!.data))
+                  i.document!.data,
+                  i.document!))
               .toList());
 
   @override
@@ -113,8 +114,8 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
   @override
   Future<DocumentSnapshot> getDocument(DocumentReference ref) async {
     try {
-      return DocumentSnapshot(
-          ref, (await _documents.get("$_dx/${ref.path}")).data);
+      Document d = await _documents.get("$_dx/${ref.path}");
+      return DocumentSnapshot(ref, d.data, d);
     } catch (e) {
       return DocumentSnapshot(ref, null);
     }
@@ -227,6 +228,27 @@ extension _XCollectionReference on CollectionReference {
                     "${(db as GoogleCloudFirestoreDatabase)._dx}/$path")
           ],
           limit: qLimit,
+          startAt: qStartAt?.metadata is Document
+              ? Cursor(
+                  values: (qStartAt!.metadata.data ?? {}).values.toList(),
+                  before: false)
+              : qStartAfter?.metadata is Document
+                  ? Cursor(
+                      values:
+                          (qStartAfter!.metadata.data ?? {}).values.toList(),
+                      before: true,
+                    )
+                  : null,
+          endAt: qEndAt?.metadata is Document
+              ? Cursor(
+                  values: (qEndAt!.metadata.data ?? {}).values.toList(),
+                  before: true)
+              : qEndBefore?.metadata is Document
+                  ? Cursor(
+                      values: (qEndBefore!.metadata.data ?? {}).values.toList(),
+                      before: false,
+                    )
+                  : null,
           orderBy: qOrderBy != null
               ? [
                   Order(

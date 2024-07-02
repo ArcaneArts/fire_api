@@ -48,8 +48,9 @@ class FirestoreReference {
 class DocumentSnapshot {
   final DocumentReference reference;
   final DocumentData? data;
+  final dynamic metadata;
 
-  DocumentSnapshot(this.reference, this.data);
+  DocumentSnapshot(this.reference, this.data, [this.metadata]);
 
   bool get exists => data != null;
 }
@@ -80,12 +81,20 @@ class CollectionReference extends FirestoreReference {
   final String? qOrderBy;
   final bool descending;
   final List<Clause> clauses;
+  final DocumentSnapshot? qStartAfter;
+  final DocumentSnapshot? qEndBefore;
+  final DocumentSnapshot? qStartAt;
+  final DocumentSnapshot? qEndAt;
 
   CollectionReference(super.path, super.db,
       {this.qLimit,
       this.qOrderBy,
       this.descending = false,
-      this.clauses = const []});
+      this.clauses = const [],
+      this.qStartAfter,
+      this.qEndBefore,
+      this.qStartAt,
+      this.qEndAt});
 
   DocumentReference doc(String documentId) => db.document('$path/$documentId');
 
@@ -95,7 +104,11 @@ class CollectionReference extends FirestoreReference {
           qLimit: qLimit,
           qOrderBy: qOrderBy,
           descending: descending,
-          clauses: [...clauses, Clause(field, operator, value)]);
+          clauses: [...clauses, Clause(field, operator, value)],
+          qStartAfter: qStartAfter,
+          qEndBefore: qEndBefore,
+          qStartAt: qStartAt,
+          qEndAt: qEndAt);
 
   CollectionReference whereLessThan(String field, dynamic value) =>
       where(field, ClauseOperator.lessThan, value);
@@ -133,16 +146,65 @@ class CollectionReference extends FirestoreReference {
           qLimit: qLimit,
           qOrderBy: field,
           descending: descending,
-          clauses: clauses);
+          clauses: clauses,
+          qStartAfter: qStartAfter,
+          qEndBefore: qEndBefore,
+          qStartAt: qStartAt,
+          qEndAt: qEndAt);
 
-  CollectionReference limit(int limit) => CollectionReference(
-        path,
-        db,
-        qLimit: limit,
-        qOrderBy: qOrderBy,
-        descending: descending,
-        clauses: clauses,
-      );
+  CollectionReference limit(int limit) => CollectionReference(path, db,
+      qLimit: limit,
+      qOrderBy: qOrderBy,
+      descending: descending,
+      clauses: clauses,
+      qStartAfter: qStartAfter,
+      qEndBefore: qEndBefore,
+      qStartAt: qStartAt,
+      qEndAt: qEndAt);
+
+  CollectionReference startAfter(DocumentSnapshot doc) =>
+      CollectionReference(path, db,
+          qLimit: qLimit,
+          qOrderBy: qOrderBy,
+          descending: descending,
+          clauses: clauses,
+          qStartAfter: doc,
+          qEndBefore: qEndBefore,
+          qStartAt: qStartAt,
+          qEndAt: qEndAt);
+
+  CollectionReference endBefore(DocumentSnapshot doc) =>
+      CollectionReference(path, db,
+          qLimit: qLimit,
+          qOrderBy: qOrderBy,
+          descending: descending,
+          clauses: clauses,
+          qStartAfter: qStartAfter,
+          qEndBefore: doc,
+          qStartAt: qStartAt,
+          qEndAt: qEndAt);
+
+  CollectionReference startAt(DocumentSnapshot doc) =>
+      CollectionReference(path, db,
+          qLimit: qLimit,
+          qOrderBy: qOrderBy,
+          descending: descending,
+          clauses: clauses,
+          qStartAfter: qStartAfter,
+          qEndBefore: qEndBefore,
+          qStartAt: doc,
+          qEndAt: qEndAt);
+
+  CollectionReference endAt(DocumentSnapshot doc) =>
+      CollectionReference(path, db,
+          qLimit: qLimit,
+          qOrderBy: qOrderBy,
+          descending: descending,
+          clauses: clauses,
+          qStartAfter: qStartAfter,
+          qEndBefore: qEndBefore,
+          qStartAt: qStartAt,
+          qEndAt: doc);
 
   Stream<List<DocumentSnapshot>> get stream =>
       db.streamDocumentsInCollection(this);
@@ -208,4 +270,54 @@ class FieldValue {
   FieldValue.decrement([num value = 1])
       : type = FieldValueType.decrement,
         elements = [value];
+}
+
+// void test(){
+//   ModelTree tree = ModelTree([
+//     TModelCollection(id: "user", io: UserIO(), children: [
+//       TAbsoluteModel(collection: "data", id: "settings", io: UserSettingsIO()),
+//       TAbsoluteModel(collection: "data", id: "capabilities", io: UserCapabilitiesIO()),
+//     ]),
+//     TModelCollection(id: "library", io: LibraryIO(), children: [
+//       TModelCollection(id: "guide", io: GuideIO(), children: [
+//         TAbsoluteModel(collection: "data", id: "data", io: GuideDataIO()),
+//         TAbsoluteModel(collection: "data", id: "manifest", io: GuideManifestIO()),
+//       ]),
+//     ]),
+//   ]);
+// }
+
+class ModelTree {
+  final List<TModel> models;
+
+  ModelTree(this.models);
+}
+
+abstract class TModel {
+  final String id;
+  final TModelIO io;
+  final List<TModel> children;
+
+  const TModel({required this.id, required this.io, this.children = const []});
+}
+
+class TModelCollection extends TModel {
+  const TModelCollection(
+      {required super.id, required super.io, super.children = const []});
+}
+
+class TAbsoluteModel extends TModel {
+  final String collection;
+
+  const TAbsoluteModel(
+      {required this.collection,
+      required super.id,
+      required super.io,
+      super.children = const []});
+}
+
+abstract class TModelIO {
+  Map<String, dynamic> toMap();
+
+  void fromMap(Map<String, dynamic> data);
 }
