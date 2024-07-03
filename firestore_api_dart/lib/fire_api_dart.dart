@@ -80,7 +80,7 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
               .map((i) => DocumentSnapshot(
                   reference.doc(i.document!.name!.split("/").last),
                   i.document!.data,
-                  i.document!))
+                  metadata: i.document!))
               .toList());
 
   @override
@@ -115,7 +115,7 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
   Future<DocumentSnapshot> getDocument(DocumentReference ref) async {
     try {
       Document d = await _documents.get("$_dx/${ref.path}");
-      return DocumentSnapshot(ref, d.data, d);
+      return DocumentSnapshot(ref, d.data, metadata: d);
     } catch (e) {
       return DocumentSnapshot(ref, null);
     }

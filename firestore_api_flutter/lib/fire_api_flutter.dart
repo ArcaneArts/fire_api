@@ -74,16 +74,18 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
   Future<void> deleteDocument(DocumentReference path) => path._ref.delete();
 
   @override
-  Future<DocumentSnapshot> getDocument(DocumentReference ref) =>
-      ref._ref.get().then((value) =>
-          DocumentSnapshot(ref, value.exists ? value.data() : null, value));
+  Future<DocumentSnapshot> getDocument(DocumentReference ref) => ref._ref
+      .get()
+      .then((value) => DocumentSnapshot(ref, value.exists ? value.data() : null,
+          metadata: value));
 
   @override
   Future<List<DocumentSnapshot>> getDocumentsInCollection(
           CollectionReference reference) =>
       reference._ref.get().then((value) => value.docs
           .map((e) => DocumentSnapshot(
-              _doc(this, e.reference), e.exists ? e.data() : null, e))
+              _doc(this, e.reference), e.exists ? e.data() : null,
+              metadata: e))
           .toList());
 
   @override
@@ -91,16 +93,27 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       ref._ref.set(data);
 
   @override
-  Stream<DocumentSnapshot> streamDocument(DocumentReference ref) =>
-      ref._ref.snapshots().map((event) =>
-          DocumentSnapshot(ref, event.exists ? event.data() : null, event));
+  Stream<DocumentSnapshot> streamDocument(DocumentReference ref) => ref._ref
+      .snapshots()
+      .map((event) => DocumentSnapshot(ref, event.exists ? event.data() : null,
+          metadata: event));
 
   @override
   Stream<List<DocumentSnapshot>> streamDocumentsInCollection(
           CollectionReference reference) =>
       reference._ref.snapshots().map((event) => event.docs
           .map((e) => DocumentSnapshot(
-              _doc(this, e.reference), e.exists ? e.data() : null, e))
+              _doc(this, e.reference), e.exists ? e.data() : null,
+              metadata: e,
+              changeType: switch (event.docChanges
+                  .where((c) => c.doc.reference.path == e.reference.path)
+                  .firstOrNull
+                  ?.type) {
+                cf.DocumentChangeType.added => DocumentChangeType.added,
+                cf.DocumentChangeType.modified => DocumentChangeType.modified,
+                cf.DocumentChangeType.removed => DocumentChangeType.removed,
+                _ => null,
+              }))
           .toList());
 
   @override

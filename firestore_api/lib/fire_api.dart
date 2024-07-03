@@ -69,11 +69,17 @@ abstract class FirestoreReference {
 class DocumentSnapshot {
   final DocumentReference reference;
   final DocumentData? data;
+  final DocumentChangeType? changeType;
   final dynamic metadata;
   String get id => reference.id;
   String get path => reference.path;
 
-  DocumentSnapshot(this.reference, this.data, [this.metadata]);
+  DocumentSnapshot(
+    this.reference,
+    this.data, {
+    this.metadata,
+    this.changeType,
+  });
 
   bool get exists => data != null;
 }
@@ -90,6 +96,8 @@ enum ClauseOperator {
   isIn, // in
   notIn // not-in
 }
+
+enum DocumentChangeType { removed, added, modified }
 
 class Clause {
   final String field;

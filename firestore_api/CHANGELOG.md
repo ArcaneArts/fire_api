@@ -1,3 +1,7 @@
+## 1.1.5
+
+* Support document change types on streams
+
 ## 1.1.4
 
 * Support for parent getter on references

@@ -1,3 +1,7 @@
+## 1.1.2
+
+* Support new metadata parameter access (supports fire_api 1.1.5+)
+
 ## 1.1.1
 
 * Fixed collection queries referencing the wrong collection id (used path)
