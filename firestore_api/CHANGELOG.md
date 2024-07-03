@@ -1,3 +1,11 @@
+## 1.1.4
+
+* Support for parent getter on references
+
+## 1.1.3
+
+* Support CollectionReference.add(DocumentData) using the same generation method as firestore apis.
+
 ## 1.1.2
 
 * Support id and path getters on DocumentSnapshots

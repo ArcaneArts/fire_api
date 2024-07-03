@@ -1,6 +1,22 @@
 library fire_api;
 
+import 'dart:math';
+
 typedef DocumentData = Map<String, dynamic>;
+
+const String _chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+Random _random = Random();
+
+String _chargen([int len = 20]) {
+  StringBuffer buffer = StringBuffer();
+
+  for (int i = 0; i < len; i++) {
+    buffer.write(_chars[_random.nextInt(_chars.length)]);
+  }
+
+  return buffer.toString();
+}
 
 FirestoreDatabase? _instance;
 
@@ -38,12 +54,16 @@ abstract class FirestoreDatabase {
       DocumentReference ref, DocumentData Function(DocumentData? data) txn);
 }
 
-class FirestoreReference {
+abstract class FirestoreReference {
   final FirestoreDatabase db;
   final String path;
   String get id => path.split('/').last;
 
   FirestoreReference(this.path, this.db);
+
+  FirestoreReference get parent;
+
+  bool get hasParent => path.split('/').length > 1;
 }
 
 class DocumentSnapshot {
@@ -215,6 +235,18 @@ class CollectionReference extends FirestoreReference {
   Future<List<DocumentSnapshot>> get() => db.getDocumentsInCollection(this);
 
   Future<int> count() => db.countDocumentsInCollection(this);
+
+  Future<DocumentReference> add(DocumentData data) async {
+    DocumentReference ref = doc(_chargen());
+    await ref.set(data);
+    return ref;
+  }
+
+  @override
+  FirestoreReference get parent => DocumentReference(
+        path.split('/').sublist(0, path.split('/').length - 1).join('/'),
+        db,
+      );
 }
 
 class DocumentReference extends FirestoreReference {
@@ -235,6 +267,12 @@ class DocumentReference extends FirestoreReference {
 
   Future<void> setAtomic(DocumentData Function(DocumentData? data) txn) =>
       db.setDocumentAtomic(this, txn);
+
+  @override
+  FirestoreReference get parent => CollectionReference(
+        path.split('/').sublist(0, path.split('/').length - 1).join('/'),
+        db,
+      );
 }
 
 enum FieldValueType {
