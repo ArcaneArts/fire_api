@@ -2,6 +2,8 @@ library fire_api;
 
 import 'dart:math';
 
+import 'package:fast_log/fast_log.dart';
+
 typedef DocumentData = Map<String, dynamic>;
 
 const String _chars =
@@ -21,6 +23,7 @@ String _chargen([int len = 20]) {
 FirestoreDatabase? _instance;
 
 abstract class FirestoreDatabase {
+  bool debugLogging = false;
   static FirestoreDatabase get instance => _instance!;
 
   FirestoreDatabase() {
@@ -237,12 +240,43 @@ class CollectionReference extends FirestoreReference {
           qStartAt: qStartAt,
           qEndAt: doc);
 
-  Stream<List<DocumentSnapshot>> get stream =>
-      db.streamDocumentsInCollection(this);
+  Stream<List<DocumentSnapshot>> get stream {
+    if (db.debugLogging) {
+      network('Opened Stream on all documents in $this');
+    }
+    return db.streamDocumentsInCollection(this);
+  }
 
-  Future<List<DocumentSnapshot>> get() => db.getDocumentsInCollection(this);
+  Future<List<DocumentSnapshot>> get() async {
+    if (db.debugLogging) {
+      network('Getting all documents in $this');
+    }
 
-  Future<int> count() => db.countDocumentsInCollection(this);
+    List<DocumentSnapshot> l = await db.getDocumentsInCollection(this);
+
+    if (db.debugLogging) {
+      network('Got ${l.length} documents');
+    }
+
+    return l;
+  }
+
+  @override
+  String toString() =>
+      "collection($path)${clauses.isNotEmpty ? "WHERE ${clauses.join(", ")}" : ""} ${qOrderBy != null ? "ORDER BY $qOrderBy ${descending ? "DESC" : "ASC"}" : ""} ${qLimit != null ? "LIMIT $qLimit" : ""} ${qStartAfter != null ? "START AFTER ${qStartAfter!.id}" : ""} ${qEndBefore != null ? "END BEFORE ${qEndBefore!.id}" : ""} ${qStartAt != null ? "START AT ${qStartAt!.id}" : ""} ${qEndAt != null ? "END AT ${qEndAt!.id}" : ""}";
+
+  Future<int> count() async {
+    if (db.debugLogging) {
+      network('Counting documents $this');
+    }
+    int c = await db.countDocumentsInCollection(this);
+
+    if (db.debugLogging) {
+      network('Counted $c documents');
+    }
+
+    return c;
+  }
 
   Future<DocumentReference> add(DocumentData data) async {
     DocumentReference ref = doc(_chargen());
@@ -263,18 +297,45 @@ class DocumentReference extends FirestoreReference {
   CollectionReference collection(String collectionId) =>
       db.collection('$path/$collectionId');
 
-  Future<void> delete() => db.deleteDocument(this);
+  @override
+  String toString() => "doc($path)";
 
-  Stream<DocumentSnapshot> get stream => db.streamDocument(this);
+  Future<void> delete() {
+    if (db.debugLogging) {
+      network('Deleting document $this');
+    }
+    return db.deleteDocument(this);
+  }
 
-  Future<DocumentSnapshot> get() => db.getDocument(this);
+  Stream<DocumentSnapshot> get stream {
+    if (db.debugLogging) {
+      network('Opened Stream on document $this');
+    }
+    return db.streamDocument(this);
+  }
 
-  Future<void> set(DocumentData data) => db.setDocument(this, data);
+  Future<DocumentSnapshot> get() async {
+    network('Getting document $this');
+    DocumentSnapshot d = await db.getDocument(this);
+    network('Got document ${d.data}');
+    return d;
+  }
+
+  Future<void> set(DocumentData data) {
+    if (db.debugLogging) {
+      network('Setting document $this to $data');
+    }
+    return db.setDocument(this, data);
+  }
 
   Future<void> update(DocumentData data) => db.updateDocument(this, data);
 
-  Future<void> setAtomic(DocumentData Function(DocumentData? data) txn) =>
-      db.setDocumentAtomic(this, txn);
+  Future<void> setAtomic(DocumentData Function(DocumentData? data) txn) {
+    if (db.debugLogging) {
+      network('Setting document $this atomically');
+    }
+    return db.setDocumentAtomic(this, txn);
+  }
 
   @override
   FirestoreReference get parent => CollectionReference(
