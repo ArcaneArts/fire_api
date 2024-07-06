@@ -59,6 +59,22 @@ extension _XCollectionReference on CollectionReference {
       d = d.endAtDocument(qEndAt!.metadata);
     }
 
+    if (qStartAfterValues != null) {
+      d = d.endAt(qStartAfterValues!);
+    }
+
+    if (qEndBeforeValues != null) {
+      d = d.endBefore(qEndBeforeValues!);
+    }
+
+    if (qStartAtValues != null) {
+      d = d.startAt(qStartAtValues!);
+    }
+
+    if (qEndAtValues != null) {
+      d = d.endAt(qEndAtValues!);
+    }
+
     return d;
   }
 }
@@ -74,10 +90,25 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
   Future<void> deleteDocument(DocumentReference path) => path._ref.delete();
 
   @override
-  Future<DocumentSnapshot> getDocument(DocumentReference ref) => ref._ref
-      .get()
-      .then((value) => DocumentSnapshot(ref, value.exists ? value.data() : null,
-          metadata: value));
+  Future<DocumentSnapshot> getDocument(DocumentReference ref,
+      {bool cached = false}) async {
+    Future<DocumentSnapshot> g(bool c) => ref._ref
+        .get(cf.GetOptions(
+            source: c ? cf.Source.cache : cf.Source.serverAndCache))
+        .then((value) => DocumentSnapshot(
+            ref, value.exists ? value.data() : null,
+            metadata: value));
+
+    if (cached) {
+      DocumentSnapshot d = await g(true);
+
+      if (d.exists) {
+        return d;
+      }
+    }
+
+    return g(false);
+  }
 
   @override
   Future<List<DocumentSnapshot>> getDocumentsInCollection(

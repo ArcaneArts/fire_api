@@ -112,7 +112,8 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
       CommitRequest(writes: [Write(delete: "$_dx/${path.path}")]), _dbx);
 
   @override
-  Future<DocumentSnapshot> getDocument(DocumentReference ref) async {
+  Future<DocumentSnapshot> getDocument(DocumentReference ref,
+      {bool cached = false}) async {
     try {
       Document d = await _documents.get("$_dx/${ref.path}");
       return DocumentSnapshot(ref, d.data, metadata: d);
@@ -231,26 +232,45 @@ extension _XCollectionReference on CollectionReference {
   StructuredQuery get toQuery => StructuredQuery(
       from: [CollectionSelector(collectionId: id)],
       limit: qLimit,
-      startAt: qStartAt?.metadata is Document
+      startAt: qStartAtValues != null
           ? Cursor(
-              values: (qStartAt!.metadata.data ?? {}).values.toList(),
+              values: qStartAtValues!.map((v) => _toValue(v)).toList(),
               before: false)
-          : qStartAfter?.metadata is Document
+          : qStartAfterValues != null
               ? Cursor(
-                  values: (qStartAfter!.metadata.data ?? {}).values.toList(),
-                  before: true,
-                )
-              : null,
-      endAt: qEndAt?.metadata is Document
+                  values: qStartAfterValues!.map((v) => _toValue(v)).toList(),
+                  before: true)
+              : qStartAt?.metadata is Document
+                  ? Cursor(
+                      values: (qStartAt!.metadata.data ?? {}).values.toList(),
+                      before: false)
+                  : qStartAfter?.metadata is Document
+                      ? Cursor(
+                          values: (qStartAfter!.metadata.data ?? {})
+                              .values
+                              .toList(),
+                          before: true,
+                        )
+                      : null,
+      endAt: qEndAtValues != null
           ? Cursor(
-              values: (qEndAt!.metadata.data ?? {}).values.toList(),
+              values: qEndAtValues!.map((v) => _toValue(v)).toList(),
               before: true)
-          : qEndBefore?.metadata is Document
+          : qEndBeforeValues != null
               ? Cursor(
-                  values: (qEndBefore!.metadata.data ?? {}).values.toList(),
-                  before: false,
-                )
-              : null,
+                  values: qEndBeforeValues!.map((v) => _toValue(v)).toList(),
+                  before: false)
+              : qEndAt?.metadata is Document
+                  ? Cursor(
+                      values: (qEndAt!.metadata.data ?? {}).values.toList(),
+                      before: true)
+                  : qEndBefore?.metadata is Document
+                      ? Cursor(
+                          values:
+                              (qEndBefore!.metadata.data ?? {}).values.toList(),
+                          before: false,
+                        )
+                      : null,
       orderBy: qOrderBy != null
           ? [
               Order(

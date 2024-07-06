@@ -1,3 +1,8 @@
+## 1.1.6
+
+* Support for startAtValues, startAfterValues, endAtValues, endBeforeValues collection queries
+* Support for get(cached: bool) (if available on documents). This will try the cache first then try without cached if not found.
+
 ## 1.1.5
 
 * Support document change types on streams

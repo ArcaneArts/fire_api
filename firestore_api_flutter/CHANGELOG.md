@@ -1,3 +1,9 @@
+## 1.1.3
+
+* Support cache getting
+* Support for startAtValues, startAfterValues, endAtValues, endBeforeValues collection queries
+* Brings support up to fire_api 1.1.6+
+
 ## 1.1.2
 
 * Support new metadata parameter access (supports fire_api 1.1.5+)

@@ -47,7 +47,8 @@ abstract class FirestoreDatabase {
 
   Stream<DocumentSnapshot> streamDocument(DocumentReference ref);
 
-  Future<DocumentSnapshot> getDocument(DocumentReference ref);
+  Future<DocumentSnapshot> getDocument(DocumentReference ref,
+      {bool cached = false});
 
   Future<void> setDocument(DocumentReference ref, DocumentData data);
 
@@ -119,6 +120,10 @@ class CollectionReference extends FirestoreReference {
   final DocumentSnapshot? qEndBefore;
   final DocumentSnapshot? qStartAt;
   final DocumentSnapshot? qEndAt;
+  final Iterable<Object?>? qStartAfterValues;
+  final Iterable<Object?>? qEndBeforeValues;
+  final Iterable<Object?>? qStartAtValues;
+  final Iterable<Object?>? qEndAtValues;
 
   CollectionReference(super.path, super.db,
       {this.qLimit,
@@ -128,7 +133,11 @@ class CollectionReference extends FirestoreReference {
       this.qStartAfter,
       this.qEndBefore,
       this.qStartAt,
-      this.qEndAt});
+      this.qEndAt,
+      this.qStartAfterValues,
+      this.qEndBeforeValues,
+      this.qStartAtValues,
+      this.qEndAtValues});
 
   DocumentReference doc(String documentId) => db.document('$path/$documentId');
 
@@ -142,7 +151,11 @@ class CollectionReference extends FirestoreReference {
           qStartAfter: qStartAfter,
           qEndBefore: qEndBefore,
           qStartAt: qStartAt,
-          qEndAt: qEndAt);
+          qEndAt: qEndAt,
+          qStartAfterValues: qStartAfterValues,
+          qEndBeforeValues: qEndBeforeValues,
+          qStartAtValues: qStartAtValues,
+          qEndAtValues: qEndAtValues);
 
   CollectionReference whereLessThan(String field, dynamic value) =>
       where(field, ClauseOperator.lessThan, value);
@@ -184,7 +197,11 @@ class CollectionReference extends FirestoreReference {
           qStartAfter: qStartAfter,
           qEndBefore: qEndBefore,
           qStartAt: qStartAt,
-          qEndAt: qEndAt);
+          qEndAt: qEndAt,
+          qStartAfterValues: qStartAfterValues,
+          qEndBeforeValues: qEndBeforeValues,
+          qStartAtValues: qStartAtValues,
+          qEndAtValues: qEndAtValues);
 
   CollectionReference limit(int limit) => CollectionReference(path, db,
       qLimit: limit,
@@ -194,7 +211,11 @@ class CollectionReference extends FirestoreReference {
       qStartAfter: qStartAfter,
       qEndBefore: qEndBefore,
       qStartAt: qStartAt,
-      qEndAt: qEndAt);
+      qEndAt: qEndAt,
+      qStartAfterValues: qStartAfterValues,
+      qEndBeforeValues: qEndBeforeValues,
+      qStartAtValues: qStartAtValues,
+      qEndAtValues: qEndAtValues);
 
   CollectionReference startAfter(DocumentSnapshot doc) =>
       CollectionReference(path, db,
@@ -205,7 +226,11 @@ class CollectionReference extends FirestoreReference {
           qStartAfter: doc,
           qEndBefore: qEndBefore,
           qStartAt: qStartAt,
-          qEndAt: qEndAt);
+          qEndAt: qEndAt,
+          qStartAfterValues: qStartAfterValues,
+          qEndBeforeValues: qEndBeforeValues,
+          qStartAtValues: qStartAtValues,
+          qEndAtValues: qEndAtValues);
 
   CollectionReference endBefore(DocumentSnapshot doc) =>
       CollectionReference(path, db,
@@ -216,7 +241,11 @@ class CollectionReference extends FirestoreReference {
           qStartAfter: qStartAfter,
           qEndBefore: doc,
           qStartAt: qStartAt,
-          qEndAt: qEndAt);
+          qEndAt: qEndAt,
+          qStartAfterValues: qStartAfterValues,
+          qEndBeforeValues: qEndBeforeValues,
+          qStartAtValues: qStartAtValues,
+          qEndAtValues: qEndAtValues);
 
   CollectionReference startAt(DocumentSnapshot doc) =>
       CollectionReference(path, db,
@@ -227,7 +256,11 @@ class CollectionReference extends FirestoreReference {
           qStartAfter: qStartAfter,
           qEndBefore: qEndBefore,
           qStartAt: doc,
-          qEndAt: qEndAt);
+          qEndAt: qEndAt,
+          qStartAfterValues: qStartAfterValues,
+          qEndBeforeValues: qEndBeforeValues,
+          qStartAtValues: qStartAtValues,
+          qEndAtValues: qEndAtValues);
 
   CollectionReference endAt(DocumentSnapshot doc) =>
       CollectionReference(path, db,
@@ -238,7 +271,71 @@ class CollectionReference extends FirestoreReference {
           qStartAfter: qStartAfter,
           qEndBefore: qEndBefore,
           qStartAt: qStartAt,
-          qEndAt: doc);
+          qEndAt: doc,
+          qStartAfterValues: qStartAfterValues,
+          qEndBeforeValues: qEndBeforeValues,
+          qStartAtValues: qStartAtValues,
+          qEndAtValues: qEndAtValues);
+
+  CollectionReference startAfterValues(Iterable<Object?> values) =>
+      CollectionReference(path, db,
+          qLimit: qLimit,
+          qOrderBy: qOrderBy,
+          descending: descending,
+          clauses: clauses,
+          qStartAfter: qStartAfter,
+          qEndBefore: qEndBefore,
+          qStartAt: qStartAt,
+          qEndAt: qEndAt,
+          qStartAfterValues: values,
+          qEndBeforeValues: qEndBeforeValues,
+          qStartAtValues: qStartAtValues,
+          qEndAtValues: qEndAtValues);
+
+  CollectionReference endBeforeValues(Iterable<Object?> values) =>
+      CollectionReference(path, db,
+          qLimit: qLimit,
+          qOrderBy: qOrderBy,
+          descending: descending,
+          clauses: clauses,
+          qStartAfter: qStartAfter,
+          qEndBefore: qEndBefore,
+          qStartAt: qStartAt,
+          qEndAt: qEndAt,
+          qStartAfterValues: qStartAfterValues,
+          qEndBeforeValues: values,
+          qStartAtValues: qStartAtValues,
+          qEndAtValues: qEndAtValues);
+
+  CollectionReference startAtValues(Iterable<Object?> values) =>
+      CollectionReference(path, db,
+          qLimit: qLimit,
+          qOrderBy: qOrderBy,
+          descending: descending,
+          clauses: clauses,
+          qStartAfter: qStartAfter,
+          qEndBefore: qEndBefore,
+          qStartAt: qStartAt,
+          qEndAt: qEndAt,
+          qStartAfterValues: qStartAfterValues,
+          qEndBeforeValues: qEndBeforeValues,
+          qStartAtValues: values,
+          qEndAtValues: qEndAtValues);
+
+  CollectionReference endAtValues(Iterable<Object?> values) =>
+      CollectionReference(path, db,
+          qLimit: qLimit,
+          qOrderBy: qOrderBy,
+          descending: descending,
+          clauses: clauses,
+          qStartAfter: qStartAfter,
+          qEndBefore: qEndBefore,
+          qStartAt: qStartAt,
+          qEndAt: qEndAt,
+          qStartAfterValues: qStartAfterValues,
+          qEndBeforeValues: qEndBeforeValues,
+          qStartAtValues: qStartAtValues,
+          qEndAtValues: values);
 
   Stream<List<DocumentSnapshot>> get stream {
     if (db.debugLogging) {
@@ -314,7 +411,7 @@ class DocumentReference extends FirestoreReference {
     return db.streamDocument(this);
   }
 
-  Future<DocumentSnapshot> get() async {
+  Future<DocumentSnapshot> get({bool cached = false}) async {
     network('Getting document $this');
     DocumentSnapshot d = await db.getDocument(this);
     network('Got document ${d.data}');

@@ -1,11 +1,11 @@
 name: fire_api_dart
 description: "An implementation for fire_api for dart servers using googleapis."
-version: 1.1.2
+version: 1.1.3
 repository: https://github.com/ArcaneArts/firestore_api/tree/main/firestore_api_dart
 environment:
   sdk: '>=3.0.0 <4.0.0'
 dependencies:
-  fire_api: ^1.1.5
+  fire_api: ^1.1.6
   google_cloud: ">=0.2.0"
   googleapis: ">=13.2.0"
   googleapis_auth: ">=1.6.0"

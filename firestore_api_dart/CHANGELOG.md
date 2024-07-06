@@ -1,3 +1,9 @@
+## 1.1.3
+
+* Support startAtValues, startAfterValues, endAtValues, endBeforeValues collection queries
+* Ignore get(cached: bool) as its not supported by Firestore over REST
+* Support fire_api 1.1.6+
+
 ## 1.1.2
 
 * Support new metadata parameter access (supports fire_api 1.1.5+)
