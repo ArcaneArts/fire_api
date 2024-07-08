@@ -1,6 +1,6 @@
 name: fire_api
 description: "A stripped down interface for firestore databases which allows both dart servers using `fire_api_dart` and flutter apps using `fire_api_flutter` to use the same api."
-version: 1.1.6
+version: 1.1.7+1
 repository: https://github.com/ArcaneArts/firestore_api/tree/main/firestore_api
 environment:
   sdk: '>=3.0.0 <4.0.0'

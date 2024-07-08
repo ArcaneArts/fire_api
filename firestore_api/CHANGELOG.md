@@ -1,3 +1,8 @@
+## 1.1.7
+
+* Fix get cached flag being ignored
+* Added getCachedOnly option
+
 ## 1.1.6
 
 * Support for startAtValues, startAfterValues, endAtValues, endBeforeValues collection queries

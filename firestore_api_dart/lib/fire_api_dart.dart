@@ -218,6 +218,10 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
               ),
           ]),
           _dbx);
+
+  @override
+  Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) =>
+      Future.value(DocumentSnapshot(ref, null));
 }
 
 extension _XClause on Clause {

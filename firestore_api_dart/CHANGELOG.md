@@ -1,3 +1,8 @@
+## 1.1.4
+
+* Support cache only getting (but not actually supporting)
+* Brings support up to fire_api 1.1.7+
+
 ## 1.1.3
 
 * Support startAtValues, startAfterValues, endAtValues, endBeforeValues collection queries

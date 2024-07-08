@@ -47,6 +47,8 @@ abstract class FirestoreDatabase {
 
   Stream<DocumentSnapshot> streamDocument(DocumentReference ref);
 
+  Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref);
+
   Future<DocumentSnapshot> getDocument(DocumentReference ref,
       {bool cached = false});
 
@@ -411,10 +413,30 @@ class DocumentReference extends FirestoreReference {
     return db.streamDocument(this);
   }
 
+  Future<DocumentSnapshot> getCacheOnly() async {
+    if (db.debugLogging) {
+      network('[CACHED] Getting document $this');
+    }
+
+    DocumentSnapshot d = await db.getDocumentCachedOnly(this);
+
+    if (db.debugLogging) {
+      network('[CACHED] Got document ${d.data}');
+    }
+
+    return d;
+  }
+
   Future<DocumentSnapshot> get({bool cached = false}) async {
-    network('Getting document $this');
-    DocumentSnapshot d = await db.getDocument(this);
-    network('Got document ${d.data}');
+    if (db.debugLogging) {
+      network('Getting document $this');
+    }
+
+    DocumentSnapshot d = await db.getDocument(this, cached: cached);
+
+    if (db.debugLogging) {
+      network('Got document ${d.data}');
+    }
     return d;
   }
 

@@ -177,4 +177,10 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
         cf.DocumentSnapshot<DocumentData> fromDb = await t.get(ref._ref);
         t.update(ref._ref, txn(fromDb.exists ? fromDb.data() : null));
       });
+
+  @override
+  Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) =>
+      ref._ref.get(const cf.GetOptions(source: cf.Source.cache)).then((value) =>
+          DocumentSnapshot(ref, value.exists ? value.data() : null,
+              metadata: value));
 }
