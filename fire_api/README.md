@@ -2,7 +2,7 @@
 
 A stripped down interface for firestore databases which allows both dart servers using `firestore_api_dart` and flutter apps using `firestore_api_flutter` to use the same api. There are more limitations obviously because both backends need to roughly support the same things however it can be useful for basic data model management.
 
-## Feature Support
+## Firestore Support
 
 | Feature                           | Flutter | Dart |
 |-----------------------------------|--|--|
@@ -14,6 +14,22 @@ A stripped down interface for firestore databases which allows both dart servers
 | Stream Documents                  | ✅ | ❌ |
 | Stream Collection Queries         | ✅ | ❌ |
 | Start/End At/After/Before Queries | ✅ | ✅ |
+| Limit Queries                     | ✅ | ✅ |
+| Order Queries                     | ✅ | ✅ |
+| Get Cached                        | ✅ | ❌ |
+
+## Cloud Storage Support (Firebase Storage)
+| Feature           | Flutter | Dart |
+|-------------------|--|--|
+| Upload Files      | ✅ | ✅ |
+| Download Files    | ✅ | ✅ |
+| Delete Files      | ❌ | ❌ |
+| Get File Metadata | ✅ | ✅ |
+| Set File Metadata | ✅ | ✅ |
+| List Files        | ❌ | ❌ |
+| Stream Files      | ❌ | ❌ |
+| Generate Download URL | ❌ | ❌ |
+| Generate Upload URL   | ❌ | ❌ |
 
 ## Flutter Setup
 
@@ -27,6 +43,7 @@ import 'package:fire_api_flutter/fire_api_flutter.dart';
 void main() {
   // AFTER YOU INITIALIZE FIREBASE
   FirebaseFirestoreDatabase.create();
+  FirebaseFireStorage.create();
 }
 ```
 
@@ -48,11 +65,14 @@ import 'package:fire_api_dart/fire_api_dart.dart';
 void main() async {
   // You need to await this because using auth credentials requires async
   await GoogleCloudFirestoreDatabase.create();
+  await GoogleCloudFireStorage.create();
 }
 
 ```
 
-## Usage
+# Usage
+
+## Firestore API
 
 The API is designed to be simple and easy to use. It was mostly modeled after the Firebase Firestore API
 
@@ -118,6 +138,17 @@ Stream<DocumentSnapshot> danStream = dan.stream;
 // Stream all users with age 25 but only get the first 50
 Stream<List<DocumentSnapshot>> usersStream =
     users.whereEqual("age", 25).limit(50).stream;
+```
+
+## Firebase Storage API
+
+```dart
+FireStorageRef r = FireStorage.instance
+    .bucket("my_bucket")
+    .ref("some/file");
+
+Future<Uint8List> read = r.read();
+Future<void> written = r.write(Uint8List);
 ```
 
 ### Note
