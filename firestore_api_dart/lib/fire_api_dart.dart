@@ -1,9 +1,98 @@
 library fire_api_dart;
 
+import 'dart:typed_data';
+
+import 'package:chunked_stream/chunked_stream.dart';
 import 'package:fire_api/fire_api.dart';
 import 'package:google_cloud/google_cloud.dart';
 import 'package:googleapis/firestore/v1.dart';
+import 'package:googleapis/storage/v1.dart' as s;
 import 'package:googleapis_auth/auth_io.dart';
+
+class GoogleCloudFireStorage extends FireStorage {
+  final s.StorageApi storageApi;
+
+  GoogleCloudFireStorage(this.storageApi);
+
+  static Future<GoogleCloudFireStorage> create() async {
+    return GoogleCloudFireStorage(s.StorageApi(
+        await clientViaApplicationDefaultCredentials(
+            scopes: [s.StorageApi.devstorageReadWriteScope])));
+  }
+
+  @override
+  Future<Uint8List> read(String bucket, String path) async {
+    final media = await storageApi.objects.get(
+      bucket,
+      path,
+      downloadOptions: s.DownloadOptions.fullMedia,
+    ) as s.Media;
+    return await readByteStream(media.stream);
+  }
+
+  @override
+  Future<void> write(String bucket, String path, Uint8List data) async {
+    final media = s.Media(Stream.value(data), data.length);
+    await storageApi.objects.insert(
+      s.Object(),
+      bucket,
+      uploadMedia: media,
+      name: path,
+    );
+  }
+
+  @override
+  Future<Map<String, String>> getMetadata(String bucket, String path) async {
+    s.Object object = await storageApi.objects.get(bucket, path) as s.Object;
+    Map<String, String> metadata = {};
+
+    // Add standard metadata
+    if (object.contentType != null) {
+      metadata['contentType'] = object.contentType!;
+    }
+    if (object.cacheControl != null) {
+      metadata['cacheControl'] = object.cacheControl!;
+    }
+    if (object.contentDisposition != null) {
+      metadata['contentDisposition'] = object.contentDisposition!;
+    }
+    if (object.contentEncoding != null) {
+      metadata['contentEncoding'] = object.contentEncoding!;
+    }
+    if (object.contentLanguage != null) {
+      metadata['contentLanguage'] = object.contentLanguage!;
+    }
+
+    if (object.metadata != null) {
+      metadata.addAll(object.metadata!);
+    }
+
+    return metadata;
+  }
+
+  @override
+  Future<void> setMetadata(
+      String bucket, String path, Map<String, String> metadata) async {
+    s.Object object = await storageApi.objects.get(bucket, path) as s.Object;
+    object.contentType = metadata['contentType'];
+    object.cacheControl = metadata['cacheControl'];
+    object.contentDisposition = metadata['contentDisposition'];
+    object.contentEncoding = metadata['contentEncoding'];
+    object.contentLanguage = metadata['contentLanguage'];
+    List<String> smk = [
+      'contentType',
+      'cacheControl',
+      'contentDisposition',
+      'contentEncoding',
+      'contentLanguage'
+    ];
+    Map<String, String> customMetadata = Map<String, String>.from(metadata)
+      ..removeWhere((key, value) => smk.contains(key));
+    object.metadata = customMetadata;
+
+    await storageApi.objects.patch(object, bucket, path);
+  }
+}
 
 class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
   final FirestoreApi api;

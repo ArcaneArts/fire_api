@@ -1,3 +1,11 @@
+## 1.1.9
+
+* Storage Interface
+
+## 1.1.8
+
+* Stream pooling to reduce opened streams
+
 ## 1.1.7
 
 * Fix get cached flag being ignored

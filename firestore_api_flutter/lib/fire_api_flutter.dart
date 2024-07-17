@@ -2,6 +2,8 @@ library fire_api_flutter;
 
 import 'package:cloud_firestore/cloud_firestore.dart' as cf;
 import 'package:fire_api/fire_api.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 
 DocumentReference _doc(
         FirestoreDatabase db, cf.DocumentReference<DocumentData> ref) =>
@@ -79,6 +81,51 @@ extension _XCollectionReference on CollectionReference {
   }
 }
 
+class FirebaseFireStorage extends FireStorage {
+  @override
+  Future<Map<String, String>> getMetadata(String bucket, String path) =>
+      FirebaseStorage.instance.ref(path).getMetadata().then((value) => {
+            if (value.cacheControl != null) "cacheControl": value.cacheControl!,
+            if (value.contentDisposition != null)
+              "contentDisposition": value.contentDisposition!,
+            if (value.contentEncoding != null)
+              "contentEncoding": value.contentEncoding!,
+            if (value.contentLanguage != null)
+              "contentLanguage": value.contentLanguage!,
+            if (value.contentType != null) "contentType": value.contentType!,
+            ...value.customMetadata?.map((k, v) => MapEntry(k, v)) ?? {},
+          });
+
+  @override
+  Future<Uint8List> read(String bucket, String path) => FirebaseStorage.instance
+      .ref(path)
+      .getData(10485760 * 128)
+      .then((d) => d!);
+
+  @override
+  Future<void> setMetadata(
+          String bucket, String path, Map<String, String> metadata) =>
+      FirebaseStorage.instance.ref(path).updateMetadata(SettableMetadata(
+          cacheControl: metadata["cacheControl"],
+          contentDisposition: metadata["contentDisposition"],
+          contentEncoding: metadata["contentEncoding"],
+          contentLanguage: metadata["contentLanguage"],
+          contentType: metadata["contentType"],
+          customMetadata: metadata.entries
+              .where((e) => ![
+                    "cacheControl",
+                    "contentDisposition",
+                    "contentEncoding",
+                    "contentLanguage",
+                    "contentType"
+                  ].contains(e.key))
+              .fold<Map<String, String>>({}, (p, e) => p..[e.key] = e.value)));
+
+  @override
+  Future<void> write(String bucket, String path, Uint8List data) =>
+      FirebaseStorage.instance.ref(path).putData(data).then((_) => null);
+}
+
 class FirebaseFirestoreDatabase extends FirestoreDatabase {
   static FirestoreDatabase create() => FirebaseFirestoreDatabase();
 
@@ -94,7 +141,11 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       {bool cached = false}) async {
     Future<DocumentSnapshot> g(bool c) => ref._ref
         .get(cf.GetOptions(
-            source: c ? cf.Source.cache : cf.Source.serverAndCache))
+            source: c
+                ? kIsWeb
+                    ? cf.Source.serverAndCache
+                    : cf.Source.cache
+                : cf.Source.serverAndCache))
         .then((value) => DocumentSnapshot(
             ref, value.exists ? value.data() : null,
             metadata: value));
@@ -179,8 +230,10 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       });
 
   @override
-  Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) =>
-      ref._ref.get(const cf.GetOptions(source: cf.Source.cache)).then((value) =>
-          DocumentSnapshot(ref, value.exists ? value.data() : null,
-              metadata: value));
+  Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) => ref
+      ._ref
+      .get(const cf.GetOptions(
+          source: kIsWeb ? cf.Source.serverAndCache : cf.Source.cache))
+      .then((value) => DocumentSnapshot(ref, value.exists ? value.data() : null,
+          metadata: value));
 }

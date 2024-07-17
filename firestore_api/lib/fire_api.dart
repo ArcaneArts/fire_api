@@ -1,8 +1,101 @@
 library fire_api;
 
+import 'dart:async';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:fast_log/fast_log.dart';
+import 'package:rxdart/rxdart.dart';
+
+class ReusableStream<T> {
+  final bool _debug;
+  final String _key;
+  final Stream<T> _stream;
+  late BehaviorSubject<T> _subject;
+  final void Function() _onClosed;
+  int _refCount = 0;
+  bool closed = false;
+  T? realValue;
+  int realValueCount = 0;
+
+  ReusableStream(this._stream, this._key, this._onClosed, this._debug) {
+    late StreamSubscription<T> subscription;
+    _subject = BehaviorSubject(
+      onCancel: () {
+        _refCount--;
+        if (_refCount == 0) {
+          _subject.close();
+          subscription.cancel();
+          closed = true;
+          if (_debug) {
+            network("[POOL]: Closing stream $_key as it has no more listeners");
+          }
+          _onClosed();
+        } else if (_debug) {
+          network(
+              "[POOL]: Listener disconnected from $_key. Remaining Listeners $_refCount");
+        }
+      },
+      onListen: () {
+        _refCount++;
+
+        if (_debug) {
+          network(
+              "[POOL]: Listener connected to $_key. Total Listeners $_refCount");
+        }
+      },
+    );
+    subscription = _stream.listen((event) {
+      realValue = event;
+      realValueCount++;
+      _subject.add(event);
+    });
+  }
+
+  void inject(T data) {
+    int rvc = realValueCount;
+    _subject.add(data);
+    Future.delayed(FirestoreDatabase.instance.injectionTimeout, () {
+      if (rvc == realValueCount) {
+        warn(
+            "Injection Timeout on $_key. A set was not received by firestore / cache within 3 seconds, and was not received from the downstream. Reverting injected value as it no longer matches the document stream.");
+
+        if (realValue != null) {
+          _subject.add(realValue as T);
+        }
+      }
+    });
+  }
+
+  Stream<T> get stream => _subject;
+}
+
+class StreamPool {
+  final bool _debug;
+  final Map<String, ReusableStream> _streams = {};
+
+  StreamPool(this._debug);
+
+  Stream<T> stream<T>(
+      FirestoreReference ref, Stream<T> Function() streamFactory) {
+    String k = ref.queryKey;
+    if (!_streams.containsKey(k)) {
+      if (_debug) {
+        network("[POOL]: Creating new stream for $k");
+      }
+      _streams[k] = ReusableStream<T>(
+          streamFactory(), k, () => _streams.remove(k), _debug);
+    }
+
+    return _streams[k]!.stream as Stream<T>;
+  }
+
+  void inject<T>(FirestoreReference ref, DocumentSnapshot snap) =>
+      _streams[ref.queryKey]?.inject(snap as T);
+
+  T? hotValue<T>(FirestoreReference ref) =>
+      _streams[ref.queryKey]?._subject.valueOrNull as T?;
+}
 
 typedef DocumentData = Map<String, dynamic>;
 
@@ -21,14 +114,64 @@ String _chargen([int len = 20]) {
 }
 
 FirestoreDatabase? _instance;
+FireStorage? _sInstance;
+
+class FireStorageRef {
+  final String bucket;
+  final String path;
+
+  FireStorageRef(this.bucket, this.path);
+
+  FireStorageRef ref(String path) => FireStorageRef(
+      bucket,
+      [...this.path.split("/"), ...path.split("/")]
+          .where((i) => i.trim().isNotEmpty)
+          .join("/"));
+
+  Future<Uint8List> read() => FireStorage.instance.read(bucket, path);
+
+  Future<void> write(Uint8List data) =>
+      FireStorage.instance.write(bucket, path, data);
+
+  Future<Map<String, String>> getMetadata() =>
+      FireStorage.instance.getMetadata(bucket, path);
+
+  Future<void> setMetadata(Map<String, String> metadata) =>
+      FireStorage.instance.setMetadata(bucket, path, metadata);
+}
+
+abstract class FireStorage {
+  static FireStorage get instance => _sInstance!;
+
+  FireStorageRef ref(String bucket, String path) =>
+      FireStorageRef(bucket, path);
+
+  FireStorageRef bucket(String bucket) => FireStorageRef(bucket, "");
+
+  Future<Uint8List> read(String bucket, String path);
+
+  Future<void> write(String bucket, String path, Uint8List data);
+
+  Future<Map<String, String>> getMetadata(String bucket, String path);
+
+  Future<void> setMetadata(
+      String bucket, String path, Map<String, String> metadata);
+}
 
 abstract class FirestoreDatabase {
+  Duration injectionTimeout = Duration(seconds: 3);
+  bool streamPooling = false;
   bool debugLogging = false;
+  bool debugPooling = false;
+  bool streamLoopbackInjection = false;
+  StreamPool? _pool;
   static FirestoreDatabase get instance => _instance!;
 
   FirestoreDatabase() {
     _instance = this;
   }
+
+  StreamPool get pool => _pool ??= StreamPool(debugPooling);
 
   CollectionReference collection(String path) =>
       CollectionReference(path, this);
@@ -64,6 +207,8 @@ abstract class FirestoreReference {
   final FirestoreDatabase db;
   final String path;
   String get id => path.split('/').last;
+
+  String get queryKey;
 
   FirestoreReference(this.path, this.db);
 
@@ -140,6 +285,28 @@ class CollectionReference extends FirestoreReference {
       this.qEndBeforeValues,
       this.qStartAtValues,
       this.qEndAtValues});
+
+  @override
+  String get queryKey {
+    List<String> parts = [
+      path,
+      if (qLimit != null) "l=$qLimit",
+      if (qOrderBy != null) "o=$qOrderBy",
+      if (descending) "d",
+      if (clauses.isNotEmpty)
+        ...clauses.map((c) => "w=<${c.field},${c.operator.index},${c.value}>"),
+      if (qStartAfter != null) "sa=${qStartAfter!.metadata}",
+      if (qEndBefore != null) "eb=${qEndBefore!.metadata}",
+      if (qStartAt != null) "st=${qStartAt!.metadata}",
+      if (qEndAt != null) "ea=${qEndAt!.metadata}",
+      if (qStartAfterValues != null) "sav=[${qStartAfterValues!.join(",")}]",
+      if (qEndBeforeValues != null) "ebv=[${qEndBeforeValues!.join(",")}]",
+      if (qStartAtValues != null) "stv=[${qStartAtValues!.join(",")}]",
+      if (qEndAtValues != null) "eav=[${qEndAtValues!.join(",")}]"
+    ];
+
+    return "collection(${parts.join(",")})";
+  }
 
   DocumentReference doc(String documentId) => db.document('$path/$documentId');
 
@@ -340,9 +507,20 @@ class CollectionReference extends FirestoreReference {
           qEndAtValues: values);
 
   Stream<List<DocumentSnapshot>> get stream {
+    if (db.streamPooling) {
+      return db.pool.stream<List<DocumentSnapshot>>(this, () {
+        if (db.debugLogging) {
+          network('Opened Stream on all documents in $this');
+        }
+
+        return db.streamDocumentsInCollection(this);
+      });
+    }
+
     if (db.debugLogging) {
       network('Opened Stream on all documents in $this');
     }
+
     return db.streamDocumentsInCollection(this);
   }
 
@@ -397,6 +575,9 @@ class DocumentReference extends FirestoreReference {
       db.collection('$path/$collectionId');
 
   @override
+  String get queryKey => "doc($path)";
+
+  @override
   String toString() => "doc($path)";
 
   Future<void> delete() {
@@ -406,10 +587,30 @@ class DocumentReference extends FirestoreReference {
     return db.deleteDocument(this);
   }
 
+  DocumentSnapshot? get hotValue =>
+      db.streamPooling ? db.pool.hotValue<DocumentSnapshot>(this) : null;
+
+  void injectIntoStream(DocumentSnapshot snap) {
+    if (db.streamPooling) {
+      db.pool.inject<DocumentSnapshot>(this, snap);
+    }
+  }
+
   Stream<DocumentSnapshot> get stream {
+    if (db.streamPooling) {
+      return db.pool.stream<DocumentSnapshot>(this, () {
+        if (db.debugLogging) {
+          network('Opened Stream on document $this');
+        }
+
+        return db.streamDocument(this);
+      });
+    }
+
     if (db.debugLogging) {
       network('Opened Stream on document $this');
     }
+
     return db.streamDocument(this);
   }
 
@@ -444,6 +645,7 @@ class DocumentReference extends FirestoreReference {
     if (db.debugLogging) {
       network('Setting document $this to $data');
     }
+    injectIntoStream(DocumentSnapshot(this, data));
     return db.setDocument(this, data);
   }
 
@@ -453,7 +655,11 @@ class DocumentReference extends FirestoreReference {
     if (db.debugLogging) {
       network('Setting document $this atomically');
     }
-    return db.setDocumentAtomic(this, txn);
+    return db.setDocumentAtomic(this, (t) {
+      DocumentData d = txn(t);
+      injectIntoStream(DocumentSnapshot(this, d));
+      return d;
+    });
   }
 
   @override

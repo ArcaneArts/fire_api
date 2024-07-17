@@ -1,3 +1,6 @@
+## 1.1.5
+* Support FireAPI 1.1.9+ with firebase storage support
+
 ## 1.1.4
 
 * Support cache only getting (but not actually supporting)
