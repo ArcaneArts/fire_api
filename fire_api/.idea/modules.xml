@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/fire_api.iml" filepath="$PROJECT_DIR$/fire_api.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../fire_api_dart/fire_api_dart.iml" filepath="$PROJECT_DIR$/../fire_api_dart/fire_api_dart.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../fire_api_flutter/fire_api_flutter.iml" filepath="$PROJECT_DIR$/../fire_api_flutter/fire_api_flutter.iml" />
+    </modules>
+  </component>
+</project>
