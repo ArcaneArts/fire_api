@@ -143,6 +143,10 @@ class FireStorageRef {
 abstract class FireStorage {
   static FireStorage get instance => _sInstance!;
 
+  FireStorage() {
+    _sInstance = this;
+  }
+
   FireStorageRef ref(String bucket, String path) =>
       FireStorageRef(bucket, path);
 
