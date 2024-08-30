@@ -1,3 +1,6 @@
+## 1.1.6
+* Fix subcollection queries not working
+
 ## 1.1.5
 * Support FireAPI 1.1.9+ with firebase storage support
 

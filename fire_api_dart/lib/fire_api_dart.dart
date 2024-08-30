@@ -164,8 +164,11 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
               RunQueryRequest(
                 structuredQuery: reference.toQuery,
               ),
-              _dx)
+              reference.path.contains("/")
+                  ? "$_dx/${reference.parent.path}/"
+                  : _dx)
           .then((r) => r
+              .where((i) => i.document != null && i.document!.exists)
               .map((i) => DocumentSnapshot(
                   reference.doc(i.document!.name!.split("/").last),
                   i.document!.data,
