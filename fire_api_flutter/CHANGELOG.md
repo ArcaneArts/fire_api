@@ -1,3 +1,9 @@
+## 1.2.0
+
+* **SEMI BREAKING** Allow the use of setAtomic while using windows by simply not actually doing it atomically. Yes this breaks atomicity, but it allows for the same code to be used on all platforms without crashing windows. You can disable this with `(FirestoreDatabase.instance as FirebaseFirestoreDatabase).useWindowsAtomicPatch = false`. However, this only happens on windows specifically if enabled.
+* Adjusted dependency constraints to allow for newer versions of fire_api, and cloud_storage
+* setAtomic actually sets now instead of calling update inside txn, shouldnt affect anything but prevents weird update bugs when you actually intended for a set.
+
 ## 1.1.6
 
 * Support firebase storage

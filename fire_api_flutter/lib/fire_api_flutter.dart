@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart' as cf;
 import 'package:fire_api/fire_api.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:universal_io/io.dart';
 
 DocumentReference _doc(
         FirestoreDatabase db, cf.DocumentReference<DocumentData> ref) =>
@@ -127,6 +128,8 @@ class FirebaseFireStorage extends FireStorage {
 }
 
 class FirebaseFirestoreDatabase extends FirestoreDatabase {
+  bool useWindowsAtomicPatch = true;
+
   static FirestoreDatabase create() => FirebaseFirestoreDatabase();
 
   @override
@@ -223,11 +226,24 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
 
   @override
   Future<void> setDocumentAtomic(DocumentReference ref,
-          DocumentData Function(DocumentData? data) txn) =>
-      cf.FirebaseFirestore.instance.runTransaction((t) async {
-        cf.DocumentSnapshot<DocumentData> fromDb = await t.get(ref._ref);
-        t.update(ref._ref, txn(fromDb.exists ? fromDb.data() : null));
-      });
+      DocumentData Function(DocumentData? data) txn) async {
+    if (useWindowsAtomicPatch && _isWindows) {
+      cf.DocumentSnapshot<DocumentData> fromDb = await ref._ref.get();
+
+      if (fromDb.exists) {
+        await ref._ref.set(txn(fromDb.data()));
+      }
+
+      return;
+    }
+
+    return cf.FirebaseFirestore.instance.runTransaction((t) async {
+      cf.DocumentSnapshot<DocumentData> fromDb = await t.get(ref._ref);
+      t.set(ref._ref, txn(fromDb.exists ? fromDb.data() : null));
+    });
+  }
+
+  bool get _isWindows => !kIsWeb && Platform.isWindows;
 
   @override
   Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) => ref

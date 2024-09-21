@@ -167,6 +167,7 @@ abstract class FirestoreDatabase {
   bool streamPooling = false;
   bool debugLogging = false;
   bool debugPooling = false;
+  bool throwOnGet = false;
   bool streamLoopbackInjection = false;
   StreamPool? _pool;
   static FirestoreDatabase get instance => _instance!;
@@ -635,6 +636,14 @@ class DocumentReference extends FirestoreReference {
   Future<DocumentSnapshot> get({bool cached = false}) async {
     if (db.debugLogging) {
       network('Getting document $this');
+
+      if (db.throwOnGet) {
+        try {
+          throw "Getting document $this";
+        } catch (e, es) {
+          network(es);
+        }
+      }
     }
 
     DocumentSnapshot d = await db.getDocument(this, cached: cached);
