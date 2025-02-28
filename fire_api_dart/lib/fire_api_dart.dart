@@ -92,6 +92,12 @@ class GoogleCloudFireStorage extends FireStorage {
 
     await storageApi.objects.patch(object, bucket, path);
   }
+
+  @override
+  Future<void> delete(String bucket, String path) => storageApi.objects.delete(
+        bucket,
+        path,
+      );
 }
 
 class GoogleCloudFirestoreDatabase extends FirestoreDatabase {

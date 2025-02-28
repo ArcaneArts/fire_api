@@ -1,18 +1,18 @@
 name: fire_api_flutter
 description: "An implementation for fire_api for flutter apps using cloud_firestore."
-version: 1.2.0
+version: 1.3.0
 repository: https://github.com/ArcaneArts/fire_api/tree/main/fire_api_flutter
 environment:
   sdk: '>=3.0.0 <4.0.0'
 dependencies:
   cloud_firestore: ">=4.0.0"
   firebase_storage: ">=12.1.0"
-  fire_api: ">=1.1.9"
+  fire_api: ">=1.2.0"
   universal_io: ">=2.0.0 <3.0.0"
   flutter:
     sdk: flutter
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^5.0.0
 flutter:

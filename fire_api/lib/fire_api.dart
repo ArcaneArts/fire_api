@@ -128,6 +128,8 @@ class FireStorageRef {
           .where((i) => i.trim().isNotEmpty)
           .join("/"));
 
+  Future<void> delete() => FireStorage.instance.delete(bucket, path);
+
   Future<Uint8List> read() => FireStorage.instance.read(bucket, path);
 
   Future<void> write(Uint8List data) =>
@@ -153,6 +155,8 @@ abstract class FireStorage {
   FireStorageRef bucket(String bucket) => FireStorageRef(bucket, "");
 
   Future<Uint8List> read(String bucket, String path);
+
+  Future<void> delete(String bucket, String path);
 
   Future<void> write(String bucket, String path, Uint8List data);
 

@@ -125,6 +125,10 @@ class FirebaseFireStorage extends FireStorage {
   @override
   Future<void> write(String bucket, String path, Uint8List data) =>
       FirebaseStorage.instance.ref(path).putData(data).then((_) => null);
+
+  @override
+  Future<void> delete(String bucket, String path) =>
+      FirebaseStorage.instance.ref(path).delete();
 }
 
 class FirebaseFirestoreDatabase extends FirestoreDatabase {

@@ -1,3 +1,6 @@
+## 1.2.0
+* Storage support for delete
+
 ## 1.1.9
 
 * Storage Interface

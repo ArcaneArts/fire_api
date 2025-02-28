@@ -1,3 +1,6 @@
+## 1.3.0
+* Support fire_api 1.2.0
+
 ## 1.2.0
 
 * **SEMI BREAKING** Allow the use of setAtomic while using windows by simply not actually doing it atomically. Yes this breaks atomicity, but it allows for the same code to be used on all platforms without crashing windows. You can disable this with `(FirestoreDatabase.instance as FirebaseFirestoreDatabase).useWindowsAtomicPatch = false`. However, this only happens on windows specifically if enabled.
