@@ -210,6 +210,9 @@ abstract class FirestoreDatabase {
 
   Future<void> setDocumentAtomic(
       DocumentReference ref, DocumentData Function(DocumentData? data) txn);
+
+  Future<void> updateDocumentAtomic(DocumentReference ref,
+      Map<String, dynamic> Function(DocumentData? data) txn);
 }
 
 abstract class FirestoreReference {
@@ -667,6 +670,14 @@ class DocumentReference extends FirestoreReference {
   }
 
   Future<void> update(DocumentData data) => db.updateDocument(this, data);
+
+  Future<void> updateAtomic(
+      Map<String, dynamic> Function(DocumentData? data) txn) {
+    if (db.debugLogging) {
+      network('Updating document $this atomically');
+    }
+    return db.updateDocumentAtomic(this, txn);
+  }
 
   Future<void> setAtomic(DocumentData Function(DocumentData? data) txn) {
     if (db.debugLogging) {
