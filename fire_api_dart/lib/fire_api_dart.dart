@@ -182,6 +182,13 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
               .toList());
 
   @override
+  Future<void> updateDocumentAtomic(DocumentReference ref,
+      Map<String, dynamic> Function(DocumentData? data) txn) {
+    // TODO: implement updateDocumentAtomic
+    throw UnimplementedError();
+  }
+
+  @override
   Future<void> setDocumentAtomic(DocumentReference ref,
       DocumentData Function(DocumentData? data) txn) async {
     String txnId =
@@ -251,13 +258,16 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
   Future<void> updateDocument(DocumentReference ref, DocumentData data) =>
       _documents.commit(
           CommitRequest(writes: [
-            if (data.values.any((e) => e is FieldValue))
+            if (data.values
+                .any((e) => e is FieldValue && e.type != FieldValueType.delete))
               Write(
                 transform: DocumentTransform(
                   document: "$_dx/${ref.path}",
                   fieldTransforms: [
                     ...data.entries
-                        .where((e) => e.value is FieldValue)
+                        .where((e) =>
+                            e.value is FieldValue &&
+                            e.value.type != FieldValueType.delete)
                         .map((e) {
                       FieldValue fv = e.value as FieldValue;
                       return FieldTransform(
@@ -300,11 +310,14 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
                   ],
                 ),
               ),
-            if (data.values.any((e) => e is! FieldValue))
+            if (data.values.any(
+                (e) => e is! FieldValue || e.type == FieldValueType.delete))
               Write(
                 updateMask: DocumentMask(
                     fieldPaths: data.entries
-                        .where((e) => e.value is! FieldValue)
+                        .where((e) =>
+                            e.value is! FieldValue ||
+                            e.value.type == FieldValueType.delete)
                         .map((e) => e.key)
                         .toList()),
                 update: Document(
