@@ -229,6 +229,25 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       }));
 
   @override
+  Future<void> updateDocumentAtomic(DocumentReference ref,
+      Map<String, dynamic> Function(DocumentData? data) txn) async {
+    if (useWindowsAtomicPatch && _isWindows) {
+      cf.DocumentSnapshot<DocumentData> fromDb = await ref._ref.get();
+
+      if (fromDb.exists) {
+        await ref._ref.update(txn(fromDb.data()));
+      }
+
+      return;
+    }
+
+    return cf.FirebaseFirestore.instance.runTransaction((t) async {
+      cf.DocumentSnapshot<DocumentData> fromDb = await t.get(ref._ref);
+      t.update(ref._ref, txn(fromDb.exists ? fromDb.data() : null));
+    });
+  }
+
+  @override
   Future<void> setDocumentAtomic(DocumentReference ref,
       DocumentData Function(DocumentData? data) txn) async {
     if (useWindowsAtomicPatch && _isWindows) {

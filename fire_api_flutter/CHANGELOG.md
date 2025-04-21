@@ -1,4 +1,7 @@
-## 1.3.0
+# 1.4.0
+* Support fire_api 1.3.0 for Update Atomic
+
+# 1.3.0
 * Support fire_api 1.2.0
 
 ## 1.2.0
