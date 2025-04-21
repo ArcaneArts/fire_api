@@ -180,12 +180,123 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
                   i.document!.data,
                   metadata: i.document!))
               .toList());
-
   @override
-  Future<void> updateDocumentAtomic(DocumentReference ref,
-      Map<String, dynamic> Function(DocumentData? data) txn) {
-    // TODO: implement updateDocumentAtomic
-    throw UnimplementedError();
+  Future<void> updateDocumentAtomic(
+    DocumentReference ref,
+    Map<String, dynamic> Function(DocumentData? data) txn,
+  ) async {
+    String txnId =
+        (await _documents.beginTransaction(BeginTransactionRequest(), _dbx))
+            .transaction!;
+
+    DocumentData? current;
+    try {
+      Document doc = await _documents.get(
+        "$_dx/${ref.path}",
+        transaction: txnId,
+      );
+      current = doc.data;
+    } catch (_) {
+      current = null;
+    }
+
+    Map<String, dynamic> patch = txn(current);
+
+    if (patch.isEmpty) {
+      await _documents.commit(
+        CommitRequest(
+          writes: [],
+          transaction: txnId,
+        ),
+        _dbx,
+      );
+      return;
+    }
+
+    List<FieldTransform> transforms = <FieldTransform>[];
+    Map<String, dynamic> directValues = <String, dynamic>{};
+    List<String> mask = <String>[];
+
+    patch.forEach((String path, dynamic value) {
+      if (value is FieldValue) {
+        switch (value.type) {
+          case FieldValueType.serverTimestamp:
+            transforms.add(FieldTransform(
+                fieldPath: path, setToServerValue: "REQUEST_TIME"));
+            break;
+
+          case FieldValueType.arrayUnion:
+            transforms.add(FieldTransform(
+              fieldPath: path,
+              appendMissingElements: ArrayValue(
+                values: value.elements!.map(_toValue).toList(),
+              ),
+            ));
+            break;
+
+          case FieldValueType.arrayRemove:
+            transforms.add(FieldTransform(
+              fieldPath: path,
+              removeAllFromArray: ArrayValue(
+                values: value.elements!.map(_toValue).toList(),
+              ),
+            ));
+            break;
+
+          case FieldValueType.increment:
+          case FieldValueType.decrement:
+            num delta = value.elements!.first;
+            transforms.add(FieldTransform(
+              fieldPath: path,
+              increment: Value(
+                integerValue: delta is int ? delta.toString() : null,
+                doubleValue: delta is int ? null : delta.toDouble(),
+              ),
+            ));
+            break;
+
+          case FieldValueType.delete:
+            mask.add(path); // delete handled by updateMask
+            break;
+        }
+      } else {
+        directValues[path] = value;
+        mask.add(path);
+      }
+    });
+
+    List<Write> writes = <Write>[];
+
+    if (transforms.isNotEmpty) {
+      writes.add(
+        Write(
+          transform: DocumentTransform(
+            document: "$_dx/${ref.path}",
+            fieldTransforms: transforms,
+          ),
+        ),
+      );
+    }
+
+    if (mask.isNotEmpty) {
+      writes.add(
+        Write(
+          updateMask: DocumentMask(fieldPaths: mask),
+          update: Document(
+            name: "$_dx/${ref.path}",
+            fields: directValues._toValueMap(),
+          ),
+        ),
+      );
+    }
+
+    await _documents.commit(
+      CommitRequest(
+        writes: writes,
+        transaction: txnId,
+      ),
+      _dbx,
+    );
   }
 
   @override

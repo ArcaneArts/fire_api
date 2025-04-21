@@ -1,4 +1,8 @@
-## 1.2.0
+# 1.3.0
+* Support fire_api 1.3.0
+* Update now works with FieldValue.delete()
+
+# 1.2.0
 * Support fire_api 1.2.0
 
 ## 1.1.6
