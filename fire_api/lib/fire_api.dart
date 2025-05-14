@@ -132,6 +132,9 @@ class FireStorageRef {
 
   Future<Uint8List> read() => FireStorage.instance.read(bucket, path);
 
+  Future<void> download(String bucket, String path, String file) =>
+      FireStorage.instance.download(bucket, path, file);
+
   Future<void> write(Uint8List data) =>
       FireStorage.instance.write(bucket, path, data);
 
@@ -157,6 +160,8 @@ abstract class FireStorage {
   Future<Uint8List> read(String bucket, String path);
 
   Future<void> delete(String bucket, String path);
+
+  Future<void> download(String bucket, String path, String file);
 
   Future<void> write(String bucket, String path, Uint8List data);
 

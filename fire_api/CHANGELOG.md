@@ -1,3 +1,6 @@
+# 1.4.0
+* Support downloading files
+
 # 1.3.0
 * Support update atomics
 

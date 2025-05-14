@@ -129,6 +129,20 @@ class FirebaseFireStorage extends FireStorage {
   @override
   Future<void> delete(String bucket, String path) =>
       FirebaseStorage.instance.ref(path).delete();
+
+  @override
+  Future<void> download(String bucket, String path, String file) async {
+    HttpClient httpClient = HttpClient();
+    HttpClientRequest request = await httpClient.getUrl(
+        Uri.parse(await FirebaseStorage.instance.ref(path).getDownloadURL()));
+    HttpClientResponse response = await request.close();
+    File outFile = File(file)..createSync(recursive: true);
+    IOSink sink = outFile.openWrite();
+    await response.pipe(sink);
+    await sink.flush();
+    await sink.close();
+    httpClient.close();
+  }
 }
 
 class FirebaseFirestoreDatabase extends FirestoreDatabase {

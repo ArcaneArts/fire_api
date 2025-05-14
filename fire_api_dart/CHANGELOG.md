@@ -1,3 +1,6 @@
+# 1.4.0
+* Support downloads
+
 # 1.3.0
 * Support fire_api 1.3.0
 * Update now works with FieldValue.delete()

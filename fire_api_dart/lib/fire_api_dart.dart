@@ -1,5 +1,6 @@
 library fire_api_dart;
 
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:chunked_stream/chunked_stream.dart';
@@ -28,6 +29,41 @@ class GoogleCloudFireStorage extends FireStorage {
       downloadOptions: s.DownloadOptions.fullMedia,
     ) as s.Media;
     return await readByteStream(media.stream);
+  }
+
+  @override
+  Future<void> download(String bucket, String path, String file) async {
+    final media = await storageApi.objects.get(
+      bucket,
+      path,
+      downloadOptions: s.DownloadOptions.fullMedia,
+    ) as s.Media;
+
+    await _readByteStreamIntoFile(media.stream, File(file));
+  }
+
+  Future<void> _readByteStreamIntoFile(
+    Stream<List<int>> input,
+    File file, {
+    int? maxSize,
+  }) async {
+    if (maxSize != null && maxSize < 0) {
+      throw ArgumentError.value(maxSize, 'maxSize must be positive, if given');
+    }
+
+    await file.create(recursive: true);
+    IOSink sink = file.openWrite();
+    int written = 0;
+    await for (List<int> chunk in input) {
+      sink.add(chunk);
+      written += chunk.length;
+      if (maxSize != null && written > maxSize) {
+        throw MaximumSizeExceeded(maxSize);
+      }
+    }
+
+    await sink.flush();
+    await sink.close();
   }
 
   @override
