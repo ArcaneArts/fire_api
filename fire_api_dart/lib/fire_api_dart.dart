@@ -194,9 +194,55 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
                       )
                     ]),
               ),
-              _dbx)
+              reference.path.contains('/')
+                  ? '$_dx/${reference.parent.path}/'
+                  : _dx)
           .then((r) => int.parse(
               r.first.result!.aggregateFields!["count"]!.integerValue!));
+  @override
+  Future<double> sumDocumentsInCollection(
+    CollectionReference reference,
+    String field,
+  ) =>
+      _documents
+          .runAggregationQuery(
+        RunAggregationQueryRequest(
+          structuredAggregationQuery: StructuredAggregationQuery(
+            structuredQuery: reference.toQuery,
+            aggregations: <Aggregation>[
+              Aggregation(
+                alias: 'sum',
+                sum: Sum(
+                  field: FieldReference(fieldPath: field),
+                ),
+              ),
+            ],
+          ),
+        ),
+        reference.path.contains('/') ? '$_dx/${reference.parent.path}/' : _dx,
+      )
+          .then((List<RunAggregationQueryResponseElement> responses) {
+        Iterable<RunAggregationQueryResponseElement> withResult =
+            responses.where((r) => r.result != null);
+
+        if (withResult.isEmpty) {
+          return 0.0;
+        }
+
+        AggregationResult aggregation =
+            withResult.first.result as AggregationResult;
+
+        Value? value = aggregation.aggregateFields?['sum'];
+        if (value == null) {
+          return 0.0;
+        }
+
+        if (value.integerValue != null) {
+          return int.parse(value.integerValue!).toDouble();
+        }
+
+        return value.doubleValue ?? 0.0;
+      });
 
   @override
   Future<List<DocumentSnapshot>> getDocumentsInCollection(

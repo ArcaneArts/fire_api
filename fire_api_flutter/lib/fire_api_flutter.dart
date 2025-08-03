@@ -155,6 +155,14 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       reference._ref.count().get().then((value) => value.count ?? 0);
 
   @override
+  Future<double> sumDocumentsInCollection(
+          CollectionReference reference, String field) =>
+      reference._ref
+          .aggregate(cf.sum(field))
+          .get()
+          .then((v) => v.getSum(field) ?? 0);
+
+  @override
   Future<void> deleteDocument(DocumentReference path) => path._ref.delete();
 
   @override

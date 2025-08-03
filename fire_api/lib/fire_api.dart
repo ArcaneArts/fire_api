@@ -194,6 +194,9 @@ abstract class FirestoreDatabase {
 
   Future<int> countDocumentsInCollection(CollectionReference reference);
 
+  Future<double> sumDocumentsInCollection(
+      CollectionReference reference, String field);
+
   Future<List<DocumentSnapshot>> getDocumentsInCollection(
       CollectionReference reference);
 
@@ -567,6 +570,19 @@ class CollectionReference extends FirestoreReference {
 
     if (db.debugLogging) {
       network('Counted $c documents');
+    }
+
+    return c;
+  }
+
+  Future<double> sum(String field) async {
+    if (db.debugLogging) {
+      network('Summing "$field" documents $this');
+    }
+    double c = await db.sumDocumentsInCollection(this, field);
+
+    if (db.debugLogging) {
+      network('Summed "$field" to $c');
     }
 
     return c;
