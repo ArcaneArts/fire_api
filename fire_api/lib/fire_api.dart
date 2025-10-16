@@ -200,6 +200,26 @@ abstract class FirestoreDatabase {
   Future<List<DocumentSnapshot>> getDocumentsInCollection(
       CollectionReference reference);
 
+  Future<DocumentPage?> getDocumentPageInCollection(
+          {required CollectionReference reference,
+          bool reversed = false,
+          int pageSize = 50,
+          DocumentPage? previousPage}) =>
+      previousPage != null && previousPage.documents.length < pageSize
+          ? Future.value(null)
+          : getDocumentsInCollection(previousPage != null
+                  ? reversed
+                      ? reference
+                          .limit(pageSize)
+                          .endBefore(previousPage.documents.last)
+                      : reference
+                          .limit(pageSize)
+                          .startAfter(previousPage.documents.first)
+                  : reference.limit(pageSize))
+              .then((v) => v.isEmpty
+                  ? null
+                  : DocumentPage(this, reference, v, reversed, pageSize));
+
   Stream<List<DocumentSnapshot>> streamDocumentsInCollection(
       CollectionReference reference);
 
@@ -804,4 +824,23 @@ abstract class TModelIO {
   Map<String, dynamic> toMap();
 
   void fromMap(Map<String, dynamic> data);
+}
+
+class DocumentPage {
+  final FirestoreDatabase db;
+  final CollectionReference reference;
+  final List<DocumentSnapshot> documents;
+  final bool reversed;
+  final int pageSize;
+
+  const DocumentPage(
+      this.db, this.reference, this.documents, this.reversed, this.pageSize);
+
+  Future<DocumentPage?> nextPage() => documents.length < pageSize
+      ? Future.value(null)
+      : db.getDocumentPageInCollection(
+          reference: reference,
+          previousPage: this,
+          pageSize: pageSize,
+          reversed: reversed);
 }

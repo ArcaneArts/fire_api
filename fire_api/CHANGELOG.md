@@ -1,3 +1,6 @@
+# 1.5.1
+* Pagination
+
 # 1.4.0
 * Support downloading files
 
