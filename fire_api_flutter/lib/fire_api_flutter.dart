@@ -12,12 +12,13 @@ DocumentReference _doc(
 
 extension _XDocumentReference on DocumentReference {
   cf.DocumentReference<DocumentData> get _ref =>
-      cf.FirebaseFirestore.instance.doc(path);
+      cf.FirebaseFirestore.instance.doc(db.effectivePath(path));
 }
 
 extension _XCollectionReference on CollectionReference {
   cf.Query<DocumentData> get _ref {
-    cf.Query<DocumentData> d = cf.FirebaseFirestore.instance.collection(path);
+    cf.Query<DocumentData> d =
+        cf.FirebaseFirestore.instance.collection(db.effectivePath(path));
 
     for (Clause i in clauses) {
       d = d.where(i.field,
@@ -147,6 +148,8 @@ class FirebaseFireStorage extends FireStorage {
 
 class FirebaseFirestoreDatabase extends FirestoreDatabase {
   bool useWindowsAtomicPatch = true;
+
+  FirebaseFirestoreDatabase({super.rootPrefix = ''});
 
   static FirestoreDatabase create() => FirebaseFirestoreDatabase();
 

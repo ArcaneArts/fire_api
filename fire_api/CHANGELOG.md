@@ -1,3 +1,6 @@
+# 1.5.2
+* Support for rootPrefix
+
 # 1.5.1
 * Pagination
 

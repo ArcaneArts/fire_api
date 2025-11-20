@@ -172,6 +172,7 @@ abstract class FireStorage {
 }
 
 abstract class FirestoreDatabase {
+  final String rootPrefix;
   Duration injectionTimeout = Duration(seconds: 3);
   bool streamPooling = false;
   bool debugLogging = false;
@@ -181,9 +182,15 @@ abstract class FirestoreDatabase {
   StreamPool? _pool;
   static FirestoreDatabase get instance => _instance!;
 
-  FirestoreDatabase() {
+  FirestoreDatabase({this.rootPrefix = ""}) {
     _instance = this;
   }
+
+  String effectivePath(String p) => (p.isEmpty && rootPrefix.isNotEmpty)
+      ? rootPrefix
+      : rootPrefix.isEmpty
+          ? p
+          : '$rootPrefix/$p';
 
   StreamPool get pool => _pool ??= StreamPool(debugPooling);
 

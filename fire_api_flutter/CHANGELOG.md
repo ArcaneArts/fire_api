@@ -1,3 +1,6 @@
+# 1.5.2
+* Support fire_api 1.5.2 and rootPrefix
+
 # 1.5.0
 * Support fire_api 1.4.0
 
