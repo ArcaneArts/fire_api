@@ -446,82 +446,113 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
           CollectionReference reference) =>
       throw UnimplementedError(
           "streamDocumentsInCollection not supported using Firestore REST apis through google cloud");
+  Map<String, Value> _buildNestedFields(Map<String, dynamic> flatData) {
+    final root = <String, Value>{};
+
+    for (final entry in flatData.entries) {
+      final segments = entry.key.split('.');
+      var current = root;
+      for (var i = 0; i < segments.length - 1; i++) {
+        final seg = segments[i];
+        if (!current.containsKey(seg) || current[seg]!.mapValue == null) {
+          current[seg] = Value(mapValue: MapValue(fields: {}));
+        }
+        current = current[seg]!.mapValue!.fields!;
+      }
+      current[segments.last] =
+          _toValue(entry.value); // Use your existing _toValue
+    }
+
+    return root;
+  }
 
   @override
-  Future<void> updateDocument(DocumentReference ref, DocumentData data) =>
-      _documents.commit(
-          CommitRequest(writes: [
-            if (data.values
-                .any((e) => e is FieldValue && e.type != FieldValueType.delete))
-              Write(
-                transform: DocumentTransform(
-                  document: "$_dx/${ref.path}",
-                  fieldTransforms: [
-                    ...data.entries
-                        .where((e) =>
-                            e.value is FieldValue &&
-                            e.value.type != FieldValueType.delete)
-                        .map((e) {
-                      FieldValue fv = e.value as FieldValue;
-                      return FieldTransform(
-                        fieldPath: e.key,
-                        setToServerValue:
-                            fv.type == FieldValueType.serverTimestamp
-                                ? "REQUEST_TIME"
+  Future<void> updateDocument(
+      DocumentReference ref, Map<String, dynamic> data) {
+    final mask = DocumentMask(fieldPaths: [
+      ...data.entries.where((e) => e.value is! FieldValue).map((e) => e.key),
+      ...data.entries
+          .where((e) =>
+              e.value is FieldValue &&
+              (e.value as FieldValue).type == FieldValueType.delete)
+          .map((e) => e.key),
+    ]);
+
+    final hasTransforms = data.values
+        .any((e) => e is FieldValue && e.type != FieldValueType.delete);
+
+    final hasUpdateOrDelete = data.values
+        .any((e) => e is! FieldValue || (e.type == FieldValueType.delete));
+
+    return _documents.commit(
+      CommitRequest(writes: [
+        if (hasTransforms)
+          Write(
+            // IMPORTANT: no updateMask here (operation is transform)
+            transform: DocumentTransform(
+              document: "$_dx/${ref.path}",
+              fieldTransforms: [
+                ...data.entries
+                    .where((e) =>
+                        e.value is FieldValue &&
+                        (e.value as FieldValue).type != FieldValueType.delete)
+                    .map((e) {
+                  final fv = e.value as FieldValue;
+                  return FieldTransform(
+                    fieldPath: e.key,
+                    setToServerValue: fv.type == FieldValueType.serverTimestamp
+                        ? "REQUEST_TIME"
+                        : null,
+                    appendMissingElements: fv.type == FieldValueType.arrayUnion
+                        ? ArrayValue(
+                            values: fv.elements!.map(_toValue).toList())
+                        : null,
+                    removeAllFromArray: fv.type == FieldValueType.arrayRemove
+                        ? ArrayValue(
+                            values: fv.elements!.map(_toValue).toList())
+                        : null,
+                    increment: fv.type == FieldValueType.increment
+                        ? Value(
+                            integerValue: fv.elements![0] is int
+                                ? fv.elements![0].toString()
                                 : null,
-                        appendMissingElements:
-                            fv.type == FieldValueType.arrayUnion
-                                ? ArrayValue(
-                                    values: fv.elements!.map(_toValue).toList())
+                            doubleValue: fv.elements![0] is! int
+                                ? (fv.elements![0] as num).toDouble()
                                 : null,
-                        removeAllFromArray:
-                            fv.type == FieldValueType.arrayRemove
-                                ? ArrayValue(
-                                    values: fv.elements!.map(_toValue).toList())
-                                : null,
-                        increment: fv.type == FieldValueType.increment
+                          )
+                        : fv.type == FieldValueType.decrement
                             ? Value(
-                                integerValue: fv.elements![0]! is int
-                                    ? fv.elements![0].toString()
+                                integerValue: fv.elements![0] is int
+                                    ? (-(fv.elements![0] as int)).toString()
                                     : null,
-                                doubleValue: fv.elements![0]! is! int
-                                    ? (fv.elements![0] as num).toDouble()
+                                doubleValue: fv.elements![0] is! int
+                                    ? -(fv.elements![0] as num).toDouble()
                                     : null,
                               )
-                            : fv.type == FieldValueType.decrement
-                                ? Value(
-                                    integerValue: fv.elements![0]! is int
-                                        ? (-(fv.elements![0] as int)).toString()
-                                        : null,
-                                    doubleValue: fv.elements![0]! is! int
-                                        ? -(fv.elements![0] as num).toDouble()
-                                        : null,
-                                  )
-                                : null,
-                      );
-                    })
-                  ],
+                            : null,
+                  );
+                }),
+              ],
+            ),
+            currentDocument: Precondition(exists: true),
+          ),
+        if (hasUpdateOrDelete)
+          Write(
+            updateMask: mask, // CRITICAL: mask must be on update
+            update: Document(
+              name: "$_dx/${ref.path}",
+              fields: _buildNestedFields(
+                Map.fromEntries(
+                  data.entries.where((e) => e.value is! FieldValue),
                 ),
               ),
-            if (data.values.any(
-                (e) => e is! FieldValue || e.type == FieldValueType.delete))
-              Write(
-                updateMask: DocumentMask(
-                    fieldPaths: data.entries
-                        .where((e) =>
-                            e.value is! FieldValue ||
-                            e.value.type == FieldValueType.delete)
-                        .map((e) => e.key)
-                        .toList()),
-                update: Document(
-                  name: "$_dx/${ref.path}",
-                  fields: Map.fromEntries(
-                          data.entries.where((e) => e.value is! FieldValue))
-                      ._toValueMap(),
-                ),
-              ),
-          ]),
-          _dbx);
+            ),
+            currentDocument: Precondition(exists: true),
+          ),
+      ]),
+      _dbx,
+    );
+  }
 
   @override
   Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) =>

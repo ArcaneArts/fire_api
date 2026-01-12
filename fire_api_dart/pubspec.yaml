@@ -1,6 +1,6 @@
 name: fire_api_dart
 description: "An implementation for fire_api for dart servers using googleapis."
-version: 1.5.0
+version: 1.5.3
 repository: https://github.com/ArcaneArts/fire_api/tree/main/fire_api_dart
 environment:
   sdk: '>=3.0.0 <4.0.0'
