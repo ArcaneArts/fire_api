@@ -32,6 +32,15 @@ class GoogleCloudFireStorage extends FireStorage {
   }
 
   @override
+  Future<void> upload(String bucket, String path, String file) async {
+    Stream<List<int>> stream = File(file).openRead();
+    int length = await File(file).length();
+    s.Media media = s.Media(stream, length);
+    s.Object object = s.Object()..name = path;
+    await storageApi.objects.insert(object, bucket, uploadMedia: media);
+  }
+
+  @override
   Future<void> download(String bucket, String path, String file) async {
     final media = await storageApi.objects.get(
       bucket,

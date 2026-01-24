@@ -163,6 +163,8 @@ abstract class FireStorage {
 
   Future<void> download(String bucket, String path, String file);
 
+  Future<void> upload(String bucket, String path, String file);
+
   Future<void> write(String bucket, String path, Uint8List data);
 
   Future<Map<String, String>> getMetadata(String bucket, String path);

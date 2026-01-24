@@ -132,6 +132,10 @@ class FirebaseFireStorage extends FireStorage {
       FirebaseStorage.instance.ref(path).delete();
 
   @override
+  Future<void> upload(String bucket, String path, String file) =>
+      FirebaseStorage.instance.ref(path).putFile(File(file));
+
+  @override
   Future<void> download(String bucket, String path, String file) async {
     HttpClient httpClient = HttpClient();
     HttpClientRequest request = await httpClient.getUrl(
