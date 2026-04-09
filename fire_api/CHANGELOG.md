@@ -1,3 +1,6 @@
+# 1.5.4
+* Support vector values
+
 # 1.5.2
 * Support for rootPrefix
 

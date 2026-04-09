@@ -183,7 +183,11 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
                     : cf.Source.cache
                 : cf.Source.serverAndCache))
         .then((value) => DocumentSnapshot(
-            ref, value.exists ? value.data() : null,
+            ref,
+            value.exists
+                ? convertMapValuesRecursive(value.data()!,
+                    (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x)
+                : null,
             metadata: value));
 
     if (cached) {
@@ -202,18 +206,27 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
           CollectionReference reference) =>
       reference._ref.get().then((value) => value.docs
           .map((e) => DocumentSnapshot(
-              _doc(this, e.reference), e.exists ? e.data() : null,
+              _doc(this, e.reference),
+              e.exists
+                  ? convertMapValuesRecursive(e.data(),
+                      (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x)
+                  : null,
               metadata: e))
           .toList());
 
   @override
   Future<void> setDocument(DocumentReference ref, DocumentData data) =>
-      ref._ref.set(data);
+      ref._ref.set(convertMapValuesRecursive(
+          data, (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x));
 
   @override
-  Stream<DocumentSnapshot> streamDocument(DocumentReference ref) => ref._ref
-      .snapshots()
-      .map((event) => DocumentSnapshot(ref, event.exists ? event.data() : null,
+  Stream<DocumentSnapshot> streamDocument(DocumentReference ref) =>
+      ref._ref.snapshots().map((event) => DocumentSnapshot(
+          ref,
+          event.exists
+              ? convertMapValuesRecursive(event.data()!,
+                  (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x)
+              : null,
           metadata: event));
 
   @override
@@ -221,7 +234,11 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
           CollectionReference reference) =>
       reference._ref.snapshots().map((event) => event.docs
           .map((e) => DocumentSnapshot(
-              _doc(this, e.reference), e.exists ? e.data() : null,
+              _doc(this, e.reference),
+              e.exists
+                  ? convertMapValuesRecursive(e.data(),
+                      (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x)
+                  : null,
               metadata: e,
               changeType: switch (event.docChanges
                   .where((c) => c.doc.reference.path == e.reference.path)
@@ -237,6 +254,10 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
   @override
   Future<void> updateDocument(DocumentReference ref, DocumentData data) =>
       ref._ref.update(data.map((k, v) {
+        if (v is VectorValue) {
+          return MapEntry<String, dynamic>(k, cf.VectorValue(v.toArray()));
+        }
+
         if (v is FieldValue) {
           return switch (v.type) {
             FieldValueType.delete =>
@@ -264,7 +285,8 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       cf.DocumentSnapshot<DocumentData> fromDb = await ref._ref.get();
 
       if (fromDb.exists) {
-        await ref._ref.update(txn(fromDb.data()));
+        await ref._ref.update(convertMapValuesRecursive(txn(fromDb.data()),
+            (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x));
       }
 
       return;
@@ -272,7 +294,10 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
 
     return cf.FirebaseFirestore.instance.runTransaction((t) async {
       cf.DocumentSnapshot<DocumentData> fromDb = await t.get(ref._ref);
-      t.update(ref._ref, txn(fromDb.exists ? fromDb.data() : null));
+      t.update(
+          ref._ref,
+          convertMapValuesRecursive(txn(fromDb.exists ? fromDb.data() : null),
+              (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x));
     });
   }
 
@@ -283,7 +308,8 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       cf.DocumentSnapshot<DocumentData> fromDb = await ref._ref.get();
 
       if (fromDb.exists) {
-        await ref._ref.set(txn(fromDb.data()));
+        await ref._ref.set(convertMapValuesRecursive(txn(fromDb.data()),
+            (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x));
       }
 
       return;
@@ -291,17 +317,25 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
 
     return cf.FirebaseFirestore.instance.runTransaction((t) async {
       cf.DocumentSnapshot<DocumentData> fromDb = await t.get(ref._ref);
-      t.set(ref._ref, txn(fromDb.exists ? fromDb.data() : null));
+      t.set(
+          ref._ref,
+          convertMapValuesRecursive(txn(fromDb.exists ? fromDb.data() : null),
+              (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x));
     });
   }
 
   bool get _isWindows => !kIsWeb && Platform.isWindows;
 
   @override
-  Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) => ref
-      ._ref
-      .get(const cf.GetOptions(
-          source: kIsWeb ? cf.Source.serverAndCache : cf.Source.cache))
-      .then((value) => DocumentSnapshot(ref, value.exists ? value.data() : null,
-          metadata: value));
+  Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) =>
+      ref._ref
+          .get(const cf.GetOptions(
+              source: kIsWeb ? cf.Source.serverAndCache : cf.Source.cache))
+          .then((value) => DocumentSnapshot(
+              ref,
+              value.exists
+                  ? convertMapValuesRecursive(value.data()!,
+                      (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x)
+                  : null,
+              metadata: value));
 }

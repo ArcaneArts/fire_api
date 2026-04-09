@@ -747,13 +747,37 @@ class DocumentReference extends FirestoreReference {
       );
 }
 
+Map<String, dynamic> convertMapValuesRecursive(
+    Map<String, dynamic> map, dynamic Function(dynamic) converter) {
+  Map<String, dynamic> result = {};
+  map.forEach((key, value) {
+    if (value is Map<String, dynamic>) {
+      result[key] = convertMapValuesRecursive(value, converter);
+    } else {
+      result[key] = converter(value);
+    }
+  });
+  return result;
+}
+
+class VectorValue {
+  const VectorValue(this._value);
+
+  final List<double> _value;
+
+  @override
+  String toString() => 'VectorValue(value: $_value)';
+
+  List<double> toArray() => _value;
+}
+
 enum FieldValueType {
   serverTimestamp,
   delete,
   arrayUnion,
   arrayRemove,
   increment,
-  decrement
+  decrement,
 }
 
 class FieldValue {
