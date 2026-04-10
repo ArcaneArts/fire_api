@@ -1,0 +1,3 @@
+dependency_overrides:
+  fire_api:
+    path: ../fire_api

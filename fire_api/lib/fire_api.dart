@@ -207,6 +207,9 @@ abstract class FirestoreDatabase {
   Future<List<DocumentSnapshot>> getDocumentsInCollection(
       CollectionReference reference);
 
+  Future<List<DocumentSnapshot>> getNearestDocumentsInCollection(
+      VectorQueryReference reference);
+
   Future<DocumentPage?> getDocumentPageInCollection(
           {required CollectionReference reference,
           bool reversed = false,
@@ -585,6 +588,83 @@ class CollectionReference extends FirestoreReference {
     return l;
   }
 
+  Future<void> deleteAll({
+    Set<String>? only,
+    int batchSize = 100,
+  }) async {
+    if (batchSize <= 0) {
+      throw ArgumentError.value(
+        batchSize,
+        'batchSize',
+        'CollectionReference.deleteAll batchSize must be greater than 0.',
+      );
+    }
+
+    final remaining = await count();
+    if (remaining <= 0) {
+      return;
+    }
+
+    final pendingIds = only == null ? null : Set<String>.from(only);
+    if (pendingIds != null && pendingIds.isEmpty) {
+      return;
+    }
+
+    if (pendingIds != null) {
+      if (_canResolveOnlyIdsDirectly) {
+        await _deleteOnlyByDocumentReference(
+          pendingIds: pendingIds,
+          batchSize: batchSize,
+        );
+        return;
+      }
+
+      await _deleteOnlyByScanningQuery(
+        pendingIds: pendingIds,
+        remaining: remaining,
+        batchSize: batchSize,
+      );
+      return;
+    }
+
+    await _deleteAllRecursively(
+      remaining: remaining,
+      batchSize: batchSize,
+    );
+  }
+
+  VectorQueryReference findNearest({
+    required String vectorField,
+    required VectorValue queryVector,
+    required int limit,
+    required VectorDistanceMeasure distanceMeasure,
+    String? distanceResultField,
+    double? distanceThreshold,
+  }) {
+    if (qLimit != null) {
+      throw StateError(
+          'CollectionReference.limit() cannot be combined with findNearest(). Use the limit argument on findNearest() instead.');
+    }
+
+    if (limit <= 0 || limit > 1000) {
+      throw ArgumentError.value(
+        limit,
+        'limit',
+        'Vector query limit must be between 1 and 1000.',
+      );
+    }
+
+    return VectorQueryReference(
+      this,
+      vectorField: vectorField,
+      queryVector: queryVector,
+      limit: limit,
+      distanceMeasure: distanceMeasure,
+      distanceResultField: distanceResultField,
+      distanceThreshold: distanceThreshold,
+    );
+  }
+
   @override
   String toString() =>
       "collection($path)${clauses.isNotEmpty ? "WHERE ${clauses.join(", ")}" : ""} ${qOrderBy != null ? "ORDER BY $qOrderBy ${descending ? "DESC" : "ASC"}" : ""} ${qLimit != null ? "LIMIT $qLimit" : ""} ${qStartAfter != null ? "START AFTER ${qStartAfter!.id}" : ""} ${qEndBefore != null ? "END BEFORE ${qEndBefore!.id}" : ""} ${qStartAt != null ? "START AT ${qStartAt!.id}" : ""} ${qEndAt != null ? "END AT ${qEndAt!.id}" : ""}";
@@ -621,11 +701,153 @@ class CollectionReference extends FirestoreReference {
     return ref;
   }
 
+  bool get _canResolveOnlyIdsDirectly =>
+      clauses.isEmpty &&
+      qOrderBy == null &&
+      qLimit == null &&
+      qStartAfter == null &&
+      qEndBefore == null &&
+      qStartAt == null &&
+      qEndAt == null &&
+      qStartAfterValues == null &&
+      qEndBeforeValues == null &&
+      qStartAtValues == null &&
+      qEndAtValues == null;
+
+  Future<void> _deleteAllRecursively({
+    required int remaining,
+    required int batchSize,
+  }) async {
+    if (remaining <= 0) {
+      return;
+    }
+
+    final documents = await limit(min(batchSize, remaining)).get();
+    if (documents.isEmpty) {
+      return;
+    }
+
+    await Future.wait(documents.map((document) => document.reference.delete()));
+
+    await _deleteAllRecursively(
+      remaining: remaining - documents.length,
+      batchSize: batchSize,
+    );
+  }
+
+  Future<void> _deleteOnlyByDocumentReference({
+    required Set<String> pendingIds,
+    required int batchSize,
+  }) async {
+    if (pendingIds.isEmpty) {
+      return;
+    }
+
+    final batchIds = pendingIds.take(batchSize).toList();
+    pendingIds.removeAll(batchIds);
+
+    final documents = await Future.wait(
+      batchIds.map((id) => doc(id).get()),
+    );
+
+    final existingDocuments = documents.where((document) => document.exists);
+    await Future.wait(
+      existingDocuments.map((document) => document.reference.delete()),
+    );
+
+    await _deleteOnlyByDocumentReference(
+      pendingIds: pendingIds,
+      batchSize: batchSize,
+    );
+  }
+
+  Future<void> _deleteOnlyByScanningQuery({
+    required Set<String> pendingIds,
+    required int remaining,
+    required int batchSize,
+    DocumentSnapshot? cursor,
+  }) async {
+    if (remaining <= 0 || pendingIds.isEmpty) {
+      return;
+    }
+
+    final batchQuery = (cursor == null ? this : startAfter(cursor))
+        .limit(min(batchSize, remaining));
+    final documents = await batchQuery.get();
+    if (documents.isEmpty) {
+      return;
+    }
+
+    final matches = <DocumentSnapshot>[];
+    for (final document in documents) {
+      if (pendingIds.remove(document.id)) {
+        matches.add(document);
+      }
+    }
+
+    if (matches.isNotEmpty) {
+      await Future.wait(matches.map((document) => document.reference.delete()));
+    }
+
+    await _deleteOnlyByScanningQuery(
+      pendingIds: pendingIds,
+      remaining: remaining - documents.length,
+      batchSize: batchSize,
+      cursor: documents.last,
+    );
+  }
+
   @override
   FirestoreReference get parent => DocumentReference(
         path.split('/').sublist(0, path.split('/').length - 1).join('/'),
         db,
       );
+}
+
+enum VectorDistanceMeasure {
+  euclidean,
+  cosine,
+  dotProduct,
+}
+
+class VectorQueryReference {
+  final CollectionReference reference;
+  final String vectorField;
+  final VectorValue queryVector;
+  final int limit;
+  final VectorDistanceMeasure distanceMeasure;
+  final String? distanceResultField;
+  final double? distanceThreshold;
+
+  const VectorQueryReference(
+    this.reference, {
+    required this.vectorField,
+    required this.queryVector,
+    required this.limit,
+    required this.distanceMeasure,
+    this.distanceResultField,
+    this.distanceThreshold,
+  });
+
+  FirestoreDatabase get db => reference.db;
+
+  Future<List<DocumentSnapshot>> get() async {
+    if (db.debugLogging) {
+      network('Getting nearest-vector documents in $this');
+    }
+
+    final results = await db.getNearestDocumentsInCollection(this);
+
+    if (db.debugLogging) {
+      network('Got ${results.length} nearest-vector documents');
+    }
+
+    return results;
+  }
+
+  @override
+  String toString() =>
+      'vectorQuery(${reference.path}, vectorField=$vectorField, limit=$limit, distanceMeasure=$distanceMeasure${distanceResultField != null ? ", distanceResultField=$distanceResultField" : ""}${distanceThreshold != null ? ", distanceThreshold=$distanceThreshold" : ""})';
 }
 
 class DocumentReference extends FirestoreReference {

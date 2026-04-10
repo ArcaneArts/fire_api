@@ -53,8 +53,8 @@ void main() {
 
       final db = GoogleCloudFirestoreDatabase(
         FirestoreApi(client),
-        client,
         'demo-project',
+        client: client,
       );
       final ref = db.collection('users').doc('alice');
       final snapshot = await db.getDocument(ref);
@@ -98,8 +98,8 @@ void main() {
 
       final db = GoogleCloudFirestoreDatabase(
         FirestoreApi(client),
-        client,
         'demo-project',
+        client: client,
       );
 
       await db.setDocument(db.collection('users').doc('alice'), {
@@ -150,8 +150,8 @@ void main() {
 
       final db = GoogleCloudFirestoreDatabase(
         FirestoreApi(client),
-        client,
         'demo-project',
+        client: client,
       );
 
       await db.updateDocument(db.collection('users').doc('alice'), {
@@ -222,8 +222,8 @@ void main() {
 
       final db = GoogleCloudFirestoreDatabase(
         FirestoreApi(client),
-        client,
         'demo-project',
+        client: client,
       );
 
       await db.updateDocumentAtomic(db.collection('users').doc('alice'),
@@ -242,6 +242,88 @@ void main() {
         },
       });
       expect(commitBody['transaction'], 'txn-123');
+    });
+
+    test('findNearest executes runQuery with vector search config', () async {
+      late Map<String, dynamic> body;
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(
+          request.url.toString(),
+          'https://firestore.googleapis.com/v1/projects/demo-project/databases/(default)/documents:runQuery',
+        );
+
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode([
+            {
+              'document': {
+                'name':
+                    'projects/demo-project/databases/(default)/documents/items/item-1',
+                'fields': {
+                  'color': {
+                    'stringValue': 'red',
+                  },
+                  'vector_distance': {
+                    'doubleValue': 0.42,
+                  },
+                },
+              },
+            },
+          ]),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final db = GoogleCloudFirestoreDatabase(
+        FirestoreApi(client),
+        'demo-project',
+        client: client,
+      );
+
+      final results = await db
+          .collection('items')
+          .whereEqual('color', 'red')
+          .findNearest(
+            vectorField: 'embedding_field',
+            queryVector: const VectorValue([3, 1, 2]),
+            limit: 5,
+            distanceMeasure: VectorDistanceMeasure.euclidean,
+            distanceResultField: 'vector_distance',
+            distanceThreshold: 4.5,
+          )
+          .get();
+
+      final structuredQuery = body['structuredQuery'] as Map<String, dynamic>;
+      expect(structuredQuery['where'], {
+        'fieldFilter': {
+          'field': {'fieldPath': 'color'},
+          'op': 'EQUAL',
+          'value': {
+            'stringValue': 'red',
+          },
+        },
+      });
+      expect(structuredQuery['findNearest'], {
+        'vectorField': {
+          'fieldPath': 'embedding_field',
+        },
+        'queryVector': {
+          'vectorValue': {
+            'values': [3.0, 1.0, 2.0],
+          },
+        },
+        'limit': 5,
+        'distanceMeasure': 'EUCLIDEAN',
+        'distanceResultField': 'vector_distance',
+        'distanceThreshold': 4.5,
+      });
+
+      expect(results, hasLength(1));
+      expect(results.single.id, 'item-1');
+      expect(results.single.data!['color'], 'red');
+      expect(results.single.data!['vector_distance'], 0.42);
     });
   });
 }

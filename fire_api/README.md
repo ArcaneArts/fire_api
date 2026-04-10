@@ -1,155 +1,242 @@
-# Firestore API
+# Fire API
 
-A stripped down interface for firestore databases which allows both dart servers using `firestore_api_dart` and flutter apps using `firestore_api_flutter` to use the same api. There are more limitations obviously because both backends need to roughly support the same things however it can be useful for basic data model management.
+`fire_api` is a shared Firestore and Firebase Storage wrapper that lets Flutter apps and Dart servers use the same API surface.
+
+The shared package models a smaller common subset of Firestore so the same document, query, aggregate, atomic-update, and storage code can run against:
+
+- `fire_api_flutter` for Flutter via `cloud_firestore` and `firebase_storage`
+- `fire_api_dart` for Dart servers via Google Cloud Firestore and Storage APIs
 
 ## Firestore Support
 
-| Feature                           | Flutter | Dart |
-|-----------------------------------|--|--|
-| Get/Set/Add/Del/Upd Documents     | ✅ | ✅ |
-| Get/Query Collections             | ✅ | ✅ |
-| Agragate Count Queries            | ✅ | ✅ |
-| Update Docs with FieldValues      | ✅ | ✅ |
-| SetAtomic (txn getThenSet)        | ✅ | ✅ |
-| Stream Documents                  | ✅ | ❌ |
-| Stream Collection Queries         | ✅ | ❌ |
-| Start/End At/After/Before Queries | ✅ | ✅ |
-| Limit Queries                     | ✅ | ✅ |
-| Order Queries                     | ✅ | ✅ |
-| Get Cached                        | ✅ | ❌ |
+| Feature | Flutter | Dart |
+| -- | -- | -- |
+| Get / Set / Add / Delete / Update documents | ✅ | ✅ |
+| Query collections | ✅ | ✅ |
+| Aggregate count queries | ✅ | ✅ |
+| Aggregate sum queries | ✅ | ✅ |
+| `FieldValue` updates | ✅ | ✅ |
+| Atomic get-then-set / get-then-update | ✅ | ✅ |
+| Start / end at / after / before queries | ✅ | ✅ |
+| Limit queries | ✅ | ✅ |
+| Order queries | ✅ | ✅ |
+| Recursive `VectorValue` read / write conversion | ✅ | ✅ |
+| Nearest-neighbor vector query `findNearest(...).get()` | ✅ | ✅ |
+| `CollectionReference.deleteAll()` | ✅ | ✅ |
+| Realtime document streams | ✅ | ❌ |
+| Realtime collection streams | ✅ | ❌ |
+| Cached document reads | ✅ | ❌ |
 
-## Cloud Storage Support (Firebase Storage)
-| Feature           | Flutter | Dart |
-|-------------------|--|--|
-| Upload Files      | ✅ | ✅ |
-| Download Files    | ✅ | ✅ |
-| Delete Files      | ❌ | ❌ |
-| Get File Metadata | ✅ | ✅ |
-| Set File Metadata | ✅ | ✅ |
-| List Files        | ❌ | ❌ |
-| Stream Files      | ❌ | ❌ |
-| Generate Download URL | ❌ | ❌ |
-| Generate Upload URL   | ❌ | ❌ |
+## Cloud Storage Support
 
-## Flutter Setup
+| Feature | Flutter | Dart |
+| -- | -- | -- |
+| Upload files | ✅ | ✅ |
+| Download files | ✅ | ✅ |
+| Delete files | ❌ | ❌ |
+| Get file metadata | ✅ | ✅ |
+| Set file metadata | ✅ | ✅ |
+| List files | ❌ | ❌ |
+| Stream files | ❌ | ❌ |
+| Generate download URLs | ❌ | ❌ |
+| Generate upload URLs | ❌ | ❌ |
 
-Current Implementation is [fire_api_flutter](https://pub.dev/packages/fire_api_flutter)
+## Setup
 
-All you really need to do is initialize the database with `FirebaseFirestoreDatabase.create();` after you initialize firebase. This will allow you to use the `FirestoreDatabase.instance` to interact with your firestore database.
+### Flutter
+
+Current implementation: [fire_api_flutter](https://pub.dev/packages/fire_api_flutter)
+
+Initialize after Firebase:
 
 ```dart
 import 'package:fire_api_flutter/fire_api_flutter.dart';
 
 void main() {
-  // AFTER YOU INITIALIZE FIREBASE
   FirebaseFirestoreDatabase.create();
   FirebaseFireStorage.create();
 }
 ```
 
-## Dart Server Setup
+### Dart Server
 
-Current Implementation is [fire_api_dart](https://pub.dev/packages/fire_api_dart)
+Current implementation: [fire_api_dart](https://pub.dev/packages/fire_api_dart)
 
-To use Firestore, you need to either make sure you are running in a google cloud environment or provide a service account key file.
+To use Firestore, run on Google Cloud or provide service-account credentials.
 
-If you are not running on google and want to easily test ensure the following environment variables are set when running. (in intellij, you can set them in the run configuration)
-1. GCP_PROJECT=<project_id>
-2. GOOGLE_APPLICATION_CREDENTIALS=<path_to_service_account_key.json>
+Useful environment variables for local development:
 
-If you need a custom database name, other than "(default)", or a custom AuthClient you can use the `GoogleCloudFirestoreDatabase.create(database: "mydbname", auth: AuthClient)` to override.
+1. `GCP_PROJECT=<project_id>`
+2. `GOOGLE_APPLICATION_CREDENTIALS=<path_to_service_account_key.json>`
+
+If you need a custom database name or custom authenticated client, use `GoogleCloudFirestoreDatabase.create(...)`.
 
 ```dart
 import 'package:fire_api_dart/fire_api_dart.dart';
 
 void main() async {
-  // You need to await this because using auth credentials requires async
   await GoogleCloudFirestoreDatabase.create();
   await GoogleCloudFireStorage.create();
 }
-
 ```
 
-# Usage
+## Usage
 
-## Firestore API
-
-The API is designed to be simple and easy to use. It was mostly modeled after the Firebase Firestore API
+### Documents
 
 ```dart
-// Document references
-DocumentReference dan = FirestoreDatabase.instance.collection("user").doc("dan");
+final dan = FirestoreDatabase.instance.collection("user").doc("dan");
 
-// Get!
-DocumentSnapshot danDoc = await dan.get();
+final danDoc = await dan.get();
 
-// Check if exists
 if (danDoc.exists) {
-  // Get with .data
-  Map<String, dynamic> dansData = danDoc.data!;
-} else {
-  print("Dan doesn't exist!");
+  final data = danDoc.data!;
+  print(data["name"]);
 }
 
-// Set data
-await dan.set({"name": "Dan", "age": 21});
+await dan.set({
+  "name": "Dan",
+  "age": 21,
+});
 
-// Update data
 await dan.update({
-  // add cats and dogs to list of likes, or make new list if the list isnt there
   "likes": FieldValue.arrayUnion(["cats", "dogs"]),
-  // increment age by 1
-  "age": FieldValue.increment(1)
+  "age": FieldValue.increment(1),
 });
 
-// Atomic set for dan (if tons of devices are setting THIS document with DIFFERENT changes
-// Use the setAtomic instead of just set so you dont wipe other peoples recent changes
-// Its legit just runTXN -> get -> set -> commit
-await dan.setAtomic((danRightNow) {
-  // Do operations on this object
-  danRightNow!["age"]++;
-  return danRightNow;
+await dan.setAtomic((current) {
+  current!["age"]++;
+  return current;
 });
 
-// Delete
-await dan.delete(); // ez
-
-// Collection references & queries
-CollectionReference users = FirestoreDatabase.instance.collection("user");
-
-// Just get all of em
-List<DocumentSnapshot> allUsers = await users.get();
-
-// Get all users with age > 18
-users
-    .whereGreaterThanOrEqual("age", 18)
-    .limit(10)
-    .orderBy("name", descending: false)
-    .get();
-
-// Simply get the count of users under 18 but only count up to 100 of them but DONT DOWNLOAD THEM
-int count = await users.whereLessThan("age", 18).limit(100).count();
-
-// THIS WILL FAIL ON THE SERVER, FLUTTER SIDE ONLY
-// Stream dan
-Stream<DocumentSnapshot> danStream = dan.stream;
-
-// THIS WILL FAIL ON THE SERVER, FLUTTER SIDE ONLY
-// Stream all users with age 25 but only get the first 50
-Stream<List<DocumentSnapshot>> usersStream =
-    users.whereEqual("age", 25).limit(50).stream;
+await dan.delete();
 ```
 
-## Firebase Storage API
+### Queries
 
 ```dart
-FireStorageRef r = FireStorage.instance
+final users = FirestoreDatabase.instance.collection("user");
+
+final allUsers = await users.get();
+
+final adults = await users
+    .whereGreaterThanOrEqual("age", 18)
+    .orderBy("name")
+    .limit(10)
+    .get();
+
+final under18Count = await users
+    .whereLessThan("age", 18)
+    .limit(100)
+    .count();
+```
+
+### Vector Values
+
+`VectorValue` is the shared vector type for both adapters. Reads and writes convert recursively through nested maps and lists.
+
+```dart
+await FirestoreDatabase.instance.collection("items").doc("one").set({
+  "title": "Example",
+  "embedding": const VectorValue([0.2, 0.4, 0.6]),
+  "nested": {
+    "history": [
+      const VectorValue([1, 2, 3]),
+    ],
+  },
+});
+
+final doc = await FirestoreDatabase.instance.collection("items").doc("one").get();
+final embedding = doc.data!["embedding"] as VectorValue;
+```
+
+### Vector Search
+
+Vector search is explicit and get-only. It is not part of the normal realtime query chain.
+
+```dart
+final results = await FirestoreDatabase.instance
+    .collection("items")
+    .whereEqual("color", "red")
+    .findNearest(
+      vectorField: "embedding_field",
+      queryVector: const VectorValue([3, 1, 2]),
+      limit: 5,
+      distanceMeasure: VectorDistanceMeasure.euclidean,
+      distanceResultField: "vector_distance",
+      distanceThreshold: 4.5,
+    )
+    .get();
+
+for (final doc in results) {
+  print(doc.id);
+  print(doc.data?["vector_distance"]);
+}
+```
+
+Notes:
+
+- Use the `limit` parameter on `findNearest(...)` rather than calling `.limit(...)` before it.
+- Vector queries currently support `.get()` only, not realtime listeners.
+
+### Collection Deletes
+
+`deleteAll()` is implemented in the shared package and works by:
+
+1. Counting the remaining documents
+2. Fetching and deleting up to `batchSize` documents at a time
+3. Repeating until the collection is empty
+
+```dart
+await FirestoreDatabase.instance
+    .collection("users")
+    .doc("dan")
+    .collection("sessions")
+    .deleteAll();
+
+await FirestoreDatabase.instance
+    .collection("items")
+    .deleteAll(
+      only: {"a", "b", "c"},
+      batchSize: 50,
+    );
+```
+
+Notes:
+
+- `batchSize` defaults to `100`
+- `only:` lets you target a known set of document IDs
+- if every ID in `only:` is already gone, the operation finishes early
+
+### Streams
+
+Realtime streams are Flutter-only:
+
+```dart
+final danStream = FirestoreDatabase.instance
+    .collection("user")
+    .doc("dan")
+    .stream;
+
+final usersStream = FirestoreDatabase.instance
+    .collection("user")
+    .whereEqual("age", 25)
+    .limit(50)
+    .stream;
+```
+
+### Firebase Storage
+
+```dart
+final ref = FireStorage.instance
     .bucket("my_bucket")
     .ref("some/file");
 
-Future<Uint8List> read = r.read();
-Future<void> written = r.write(Uint8List);
+final bytes = await ref.read();
+await ref.write(bytes);
 ```
 
-### Note
-Arcane Arts Inc. has no affiliation with Google or Firebase. This is a wrapper project and is not officially supported or endorsed by Google or Firebase. Please test thoroughly before using in a production environment.
+## Notes
+
+- This is an unofficial wrapper around Firebase / Google Cloud APIs.
+- Test carefully before using in production.
