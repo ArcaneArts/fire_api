@@ -1,5 +1,3 @@
-library fire_api;
-
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
@@ -747,18 +745,28 @@ class DocumentReference extends FirestoreReference {
       );
 }
 
-Map<String, dynamic> convertMapValuesRecursive(
-    Map<String, dynamic> map, dynamic Function(dynamic) converter) {
-  Map<String, dynamic> result = {};
-  map.forEach((key, value) {
-    if (value is Map<String, dynamic>) {
-      result[key] = convertMapValuesRecursive(value, converter);
-    } else {
-      result[key] = converter(value);
-    }
-  });
-  return result;
+dynamic convertValueRecursive(
+    dynamic value, dynamic Function(dynamic) converter) {
+  if (value is Map) {
+    return value.map<String, dynamic>((key, innerValue) => MapEntry(
+          key as String,
+          convertValueRecursive(innerValue, converter),
+        ));
+  }
+
+  if (value is List) {
+    return value
+        .map((innerValue) => convertValueRecursive(innerValue, converter))
+        .toList();
+  }
+
+  return converter(value);
 }
+
+Map<String, dynamic> convertMapValuesRecursive(
+        Map<String, dynamic> map, dynamic Function(dynamic) converter) =>
+    Map<String, dynamic>.from(
+        convertValueRecursive(map, converter) as Map<String, dynamic>);
 
 class VectorValue {
   const VectorValue(this._value);

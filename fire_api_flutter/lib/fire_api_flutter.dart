@@ -1,5 +1,3 @@
-library fire_api_flutter;
-
 import 'package:cloud_firestore/cloud_firestore.dart' as cf;
 import 'package:fire_api/fire_api.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -21,22 +19,23 @@ extension _XCollectionReference on CollectionReference {
         cf.FirebaseFirestore.instance.collection(db.effectivePath(path));
 
     for (Clause i in clauses) {
+      final value = _encodeFirestoreValue(i.value);
       d = d.where(i.field,
           arrayContains:
-              i.operator == ClauseOperator.arrayContains ? i.value : null,
+              i.operator == ClauseOperator.arrayContains ? value : null,
           arrayContainsAny:
-              i.operator == ClauseOperator.arrayContainsAny ? i.value : null,
+              i.operator == ClauseOperator.arrayContainsAny ? value : null,
           isGreaterThan:
-              i.operator == ClauseOperator.greaterThan ? i.value : null,
+              i.operator == ClauseOperator.greaterThan ? value : null,
           isGreaterThanOrEqualTo:
-              i.operator == ClauseOperator.greaterThanOrEqual ? i.value : null,
-          isEqualTo: i.operator == ClauseOperator.equal ? i.value : null,
-          isLessThan: i.operator == ClauseOperator.lessThan ? i.value : null,
+              i.operator == ClauseOperator.greaterThanOrEqual ? value : null,
+          isEqualTo: i.operator == ClauseOperator.equal ? value : null,
+          isLessThan: i.operator == ClauseOperator.lessThan ? value : null,
           isLessThanOrEqualTo:
-              i.operator == ClauseOperator.lessThanOrEqual ? i.value : null,
-          isNotEqualTo: i.operator == ClauseOperator.notEqual ? i.value : null,
-          whereIn: i.operator == ClauseOperator.isIn ? i.value : null,
-          whereNotIn: i.operator == ClauseOperator.notIn ? i.value : null);
+              i.operator == ClauseOperator.lessThanOrEqual ? value : null,
+          isNotEqualTo: i.operator == ClauseOperator.notEqual ? value : null,
+          whereIn: i.operator == ClauseOperator.isIn ? value : null,
+          whereNotIn: i.operator == ClauseOperator.notIn ? value : null);
     }
 
     if (qOrderBy != null) {
@@ -81,6 +80,62 @@ extension _XCollectionReference on CollectionReference {
 
     return d;
   }
+}
+
+dynamic _convertValueRecursive(
+  dynamic value,
+  dynamic Function(dynamic) converter,
+) {
+  if (value is Map) {
+    return value.map<String, dynamic>((key, innerValue) => MapEntry(
+          key as String,
+          _convertValueRecursive(innerValue, converter),
+        ));
+  }
+
+  if (value is List) {
+    return value
+        .map((innerValue) => _convertValueRecursive(innerValue, converter))
+        .toList();
+  }
+
+  return converter(value);
+}
+
+dynamic _decodeFirestoreValue(dynamic value) => _convertValueRecursive(
+      value,
+      (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x,
+    );
+
+dynamic _encodeFirestoreValue(dynamic value) => _convertValueRecursive(
+      value,
+      (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x,
+    );
+
+DocumentData? _decodeFirestoreDocumentData(DocumentData? data) => data == null
+    ? null
+    : Map<String, dynamic>.from(_decodeFirestoreValue(data) as Map);
+
+DocumentData _encodeFirestoreDocumentData(DocumentData data) =>
+    Map<String, dynamic>.from(_encodeFirestoreValue(data) as Map);
+
+dynamic _encodeFirestoreUpdateValue(dynamic value) {
+  if (value is! FieldValue) {
+    return _encodeFirestoreValue(value);
+  }
+
+  return switch (value.type) {
+    FieldValueType.delete => cf.FieldValue.delete(),
+    FieldValueType.increment =>
+      cf.FieldValue.increment(value.elements![0] as num),
+    FieldValueType.decrement =>
+      cf.FieldValue.increment(-(value.elements![0] as num)),
+    FieldValueType.arrayUnion =>
+      cf.FieldValue.arrayUnion(_encodeFirestoreValue(value.elements!) as List),
+    FieldValueType.arrayRemove =>
+      cf.FieldValue.arrayRemove(_encodeFirestoreValue(value.elements!) as List),
+    FieldValueType.serverTimestamp => cf.FieldValue.serverTimestamp(),
+  };
 }
 
 class FirebaseFireStorage extends FireStorage {
@@ -182,12 +237,8 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
                     ? cf.Source.serverAndCache
                     : cf.Source.cache
                 : cf.Source.serverAndCache))
-        .then((value) => DocumentSnapshot(
-            ref,
-            value.exists
-                ? convertMapValuesRecursive(value.data()!,
-                    (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x)
-                : null,
+        .then((value) => DocumentSnapshot(ref,
+            value.exists ? _decodeFirestoreDocumentData(value.data()) : null,
             metadata: value));
 
     if (cached) {
@@ -205,40 +256,27 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
   Future<List<DocumentSnapshot>> getDocumentsInCollection(
           CollectionReference reference) =>
       reference._ref.get().then((value) => value.docs
-          .map((e) => DocumentSnapshot(
-              _doc(this, e.reference),
-              e.exists
-                  ? convertMapValuesRecursive(e.data(),
-                      (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x)
-                  : null,
+          .map((e) => DocumentSnapshot(_doc(this, e.reference),
+              e.exists ? _decodeFirestoreDocumentData(e.data()) : null,
               metadata: e))
           .toList());
 
   @override
   Future<void> setDocument(DocumentReference ref, DocumentData data) =>
-      ref._ref.set(convertMapValuesRecursive(
-          data, (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x));
+      ref._ref.set(_encodeFirestoreDocumentData(data));
 
   @override
   Stream<DocumentSnapshot> streamDocument(DocumentReference ref) =>
       ref._ref.snapshots().map((event) => DocumentSnapshot(
-          ref,
-          event.exists
-              ? convertMapValuesRecursive(event.data()!,
-                  (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x)
-              : null,
+          ref, event.exists ? _decodeFirestoreDocumentData(event.data()) : null,
           metadata: event));
 
   @override
   Stream<List<DocumentSnapshot>> streamDocumentsInCollection(
           CollectionReference reference) =>
       reference._ref.snapshots().map((event) => event.docs
-          .map((e) => DocumentSnapshot(
-              _doc(this, e.reference),
-              e.exists
-                  ? convertMapValuesRecursive(e.data(),
-                      (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x)
-                  : null,
+          .map((e) => DocumentSnapshot(_doc(this, e.reference),
+              e.exists ? _decodeFirestoreDocumentData(e.data()) : null,
               metadata: e,
               changeType: switch (event.docChanges
                   .where((c) => c.doc.reference.path == e.reference.path)
@@ -254,28 +292,7 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
   @override
   Future<void> updateDocument(DocumentReference ref, DocumentData data) =>
       ref._ref.update(data.map((k, v) {
-        if (v is VectorValue) {
-          return MapEntry<String, dynamic>(k, cf.VectorValue(v.toArray()));
-        }
-
-        if (v is FieldValue) {
-          return switch (v.type) {
-            FieldValueType.delete =>
-              MapEntry<String, dynamic>(k, cf.FieldValue.delete()),
-            FieldValueType.increment => MapEntry<String, dynamic>(
-                k, cf.FieldValue.increment(v.elements![0] as num)),
-            FieldValueType.decrement => MapEntry<String, dynamic>(
-                k, cf.FieldValue.increment(-v.elements![0] as num)),
-            FieldValueType.arrayUnion => MapEntry<String, dynamic>(
-                k, cf.FieldValue.arrayUnion(v.elements!)),
-            FieldValueType.arrayRemove => MapEntry<String, dynamic>(
-                k, cf.FieldValue.arrayRemove(v.elements!)),
-            FieldValueType.serverTimestamp =>
-              MapEntry<String, dynamic>(k, cf.FieldValue.serverTimestamp()),
-          };
-        }
-
-        return MapEntry<String, dynamic>(k, v);
+        return MapEntry<String, dynamic>(k, _encodeFirestoreUpdateValue(v));
       }));
 
   @override
@@ -285,8 +302,10 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       cf.DocumentSnapshot<DocumentData> fromDb = await ref._ref.get();
 
       if (fromDb.exists) {
-        await ref._ref.update(convertMapValuesRecursive(txn(fromDb.data()),
-            (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x));
+        await ref._ref.update(
+            _encodeFirestoreDocumentData(txn(_decodeFirestoreDocumentData(
+          fromDb.data(),
+        ))));
       }
 
       return;
@@ -296,8 +315,8 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       cf.DocumentSnapshot<DocumentData> fromDb = await t.get(ref._ref);
       t.update(
           ref._ref,
-          convertMapValuesRecursive(txn(fromDb.exists ? fromDb.data() : null),
-              (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x));
+          _encodeFirestoreDocumentData(
+              txn(_decodeFirestoreDocumentData(fromDb.data()))));
     });
   }
 
@@ -308,8 +327,9 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       cf.DocumentSnapshot<DocumentData> fromDb = await ref._ref.get();
 
       if (fromDb.exists) {
-        await ref._ref.set(convertMapValuesRecursive(txn(fromDb.data()),
-            (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x));
+        await ref._ref.set(_encodeFirestoreDocumentData(txn(
+          _decodeFirestoreDocumentData(fromDb.data()),
+        )));
       }
 
       return;
@@ -319,23 +339,19 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
       cf.DocumentSnapshot<DocumentData> fromDb = await t.get(ref._ref);
       t.set(
           ref._ref,
-          convertMapValuesRecursive(txn(fromDb.exists ? fromDb.data() : null),
-              (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x));
+          _encodeFirestoreDocumentData(
+              txn(_decodeFirestoreDocumentData(fromDb.data()))));
     });
   }
 
   bool get _isWindows => !kIsWeb && Platform.isWindows;
 
   @override
-  Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) =>
-      ref._ref
-          .get(const cf.GetOptions(
-              source: kIsWeb ? cf.Source.serverAndCache : cf.Source.cache))
-          .then((value) => DocumentSnapshot(
-              ref,
-              value.exists
-                  ? convertMapValuesRecursive(value.data()!,
-                      (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x)
-                  : null,
-              metadata: value));
+  Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) => ref
+      ._ref
+      .get(const cf.GetOptions(
+          source: kIsWeb ? cf.Source.serverAndCache : cf.Source.cache))
+      .then((value) => DocumentSnapshot(
+          ref, value.exists ? _decodeFirestoreDocumentData(value.data()) : null,
+          metadata: value));
 }

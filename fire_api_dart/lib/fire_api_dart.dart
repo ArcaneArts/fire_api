@@ -1,5 +1,4 @@
-library fire_api_dart;
-
+import 'dart:convert' as convert;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -9,6 +8,7 @@ import 'package:google_cloud/google_cloud.dart';
 import 'package:googleapis/firestore/v1.dart';
 import 'package:googleapis/storage/v1.dart' as s;
 import 'package:googleapis_auth/auth_io.dart';
+import 'package:http/http.dart' as http;
 
 class GoogleCloudFireStorage extends FireStorage {
   final s.StorageApi storageApi;
@@ -147,10 +147,11 @@ class GoogleCloudFireStorage extends FireStorage {
 
 class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
   final FirestoreApi api;
+  final http.Client client;
   final String project;
   final String database;
 
-  GoogleCloudFirestoreDatabase(this.api, this.project,
+  GoogleCloudFirestoreDatabase(this.api, this.client, this.project,
       {this.database = "(default)"});
 
   /// To use Firestore, you need to either make sure
@@ -160,8 +161,8 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
   ///
   /// If you are not running on google and want to easily test ensure the following
   /// environment variables are set when running. (in intellij, you can set them in the run configuration)
-  /// 1. GCP_PROJECT=<project_id>
-  /// 2. GOOGLE_APPLICATION_CREDENTIALS=<path_to_service_account_key.json>
+  /// 1. `GCP_PROJECT=<project_id>`
+  /// 2. `GOOGLE_APPLICATION_CREDENTIALS=<path_to_service_account_key.json>`
   ///
   /// <br/>
   ///
@@ -174,8 +175,9 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
         ? clientViaApplicationDefaultCredentials(
             scopes: [FirestoreApi.datastoreScope])
         : Future.value(auth);
+    final resolvedAuthClient = await authClient;
     return GoogleCloudFirestoreDatabase(
-        FirestoreApi(await authClient), await projectId,
+        FirestoreApi(resolvedAuthClient), resolvedAuthClient, await projectId,
         database: database);
   }
 
@@ -186,91 +188,90 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
       api.projects.databases.documents;
 
   @override
-  Future<int> countDocumentsInCollection(CollectionReference reference) =>
-      _documents
-          .runAggregationQuery(
-              RunAggregationQueryRequest(
-                structuredAggregationQuery: StructuredAggregationQuery(
-                    structuredQuery: reference.toQuery,
-                    aggregations: [
-                      Aggregation(
-                        alias: "count",
-                        count: reference.qLimit == null
-                            ? Count()
-                            : Count(
-                                upTo: reference.qLimit!.toString(),
-                              ),
-                      )
-                    ]),
-              ),
-              reference.path.contains('/')
-                  ? '$_dx/${reference.parent.path}/'
-                  : _dx)
-          .then((r) => int.parse(
-              r.first.result!.aggregateFields!["count"]!.integerValue!));
+  Future<int> countDocumentsInCollection(CollectionReference reference) async {
+    final response = await _postFirestoreJson(
+      '${_queryParentPath(reference)}:runAggregationQuery',
+      body: {
+        'structuredAggregationQuery': {
+          'structuredQuery': reference.toQueryJson,
+          'aggregations': [
+            {
+              'alias': 'count',
+              'count': {
+                if (reference.qLimit != null)
+                  'upTo': reference.qLimit.toString(),
+              },
+            },
+          ],
+        },
+      },
+    );
+
+    final aggregateFields = _firstAggregationFields(response);
+    return int.parse(
+      (aggregateFields['count'] as Map<String, dynamic>)['integerValue']
+          as String,
+    );
+  }
+
   @override
   Future<double> sumDocumentsInCollection(
     CollectionReference reference,
     String field,
-  ) =>
-      _documents
-          .runAggregationQuery(
-        RunAggregationQueryRequest(
-          structuredAggregationQuery: StructuredAggregationQuery(
-            structuredQuery: reference.toQuery,
-            aggregations: <Aggregation>[
-              Aggregation(
-                alias: 'sum',
-                sum: Sum(
-                  field: FieldReference(fieldPath: field),
-                ),
-              ),
-            ],
-          ),
-        ),
-        reference.path.contains('/') ? '$_dx/${reference.parent.path}/' : _dx,
-      )
-          .then((List<RunAggregationQueryResponseElement> responses) {
-        Iterable<RunAggregationQueryResponseElement> withResult =
-            responses.where((r) => r.result != null);
+  ) async {
+    final response = await _postFirestoreJson(
+      '${_queryParentPath(reference)}:runAggregationQuery',
+      body: {
+        'structuredAggregationQuery': {
+          'structuredQuery': reference.toQueryJson,
+          'aggregations': [
+            {
+              'alias': 'sum',
+              'sum': {
+                'field': {'fieldPath': field},
+              },
+            },
+          ],
+        },
+      },
+    );
 
-        if (withResult.isEmpty) {
-          return 0.0;
-        }
+    final aggregateFields = _firstAggregationFields(response);
+    final value = aggregateFields['sum'] as Map<String, dynamic>?;
+    if (value == null) {
+      return 0.0;
+    }
 
-        AggregationResult aggregation =
-            withResult.first.result as AggregationResult;
+    if (value['integerValue'] != null) {
+      return int.parse(value['integerValue'] as String).toDouble();
+    }
 
-        Value? value = aggregation.aggregateFields?['sum'];
-        if (value == null) {
-          return 0.0;
-        }
-
-        if (value.integerValue != null) {
-          return int.parse(value.integerValue!).toDouble();
-        }
-
-        return value.doubleValue ?? 0.0;
-      });
+    return (value['doubleValue'] as num?)?.toDouble() ?? 0.0;
+  }
 
   @override
   Future<List<DocumentSnapshot>> getDocumentsInCollection(
-          CollectionReference reference) =>
-      _documents
-          .runQuery(
-              RunQueryRequest(
-                structuredQuery: reference.toQuery,
-              ),
-              reference.path.contains("/")
-                  ? "$_dx/${reference.parent.path}/"
-                  : _dx)
-          .then((r) => r
-              .where((i) => i.document != null && i.document!.exists)
-              .map((i) => DocumentSnapshot(
-                  reference.doc(i.document!.name!.split("/").last),
-                  i.document!.data,
-                  metadata: i.document!))
-              .toList());
+      CollectionReference reference) async {
+    final response = await _postFirestoreJson(
+      '${_queryParentPath(reference)}:runQuery',
+      body: {
+        'structuredQuery': reference.toQueryJson,
+      },
+    );
+
+    return (response as List)
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .where((entry) => entry['document'] is Map)
+        .map((entry) => Map<String, dynamic>.from(entry['document'] as Map))
+        .where(_documentExists)
+        .map((document) => _documentSnapshotFromJson(
+              reference.doc((document['name'] as String).split('/').last),
+              document,
+            ))
+        .toList();
+  }
+
   @override
   Future<void> updateDocumentAtomic(
     DocumentReference ref,
@@ -280,113 +281,25 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
         (await _documents.beginTransaction(BeginTransactionRequest(), _dbx))
             .transaction!;
 
-    DocumentData? current;
-    try {
-      Document doc = await _documents.get(
-        "$_dx/${ref.path}",
-        transaction: txnId,
-      );
-      current = doc.data;
-    } catch (_) {
-      current = null;
-    }
+    final current = await _getDocumentData(
+      ref.path,
+      transaction: txnId,
+      allowMissing: true,
+    );
 
     Map<String, dynamic> patch = txn(current);
 
     if (patch.isEmpty) {
-      await _documents.commit(
-        CommitRequest(
-          writes: [],
-          transaction: txnId,
-        ),
-        _dbx,
+      await _commitWrites(
+        const [],
+        transaction: txnId,
       );
       return;
     }
 
-    List<FieldTransform> transforms = <FieldTransform>[];
-    Map<String, dynamic> directValues = <String, dynamic>{};
-    List<String> mask = <String>[];
-
-    patch.forEach((String path, dynamic value) {
-      if (value is FieldValue) {
-        switch (value.type) {
-          case FieldValueType.serverTimestamp:
-            transforms.add(FieldTransform(
-                fieldPath: path, setToServerValue: "REQUEST_TIME"));
-            break;
-
-          case FieldValueType.arrayUnion:
-            transforms.add(FieldTransform(
-              fieldPath: path,
-              appendMissingElements: ArrayValue(
-                values: value.elements!.map(_toValue).toList(),
-              ),
-            ));
-            break;
-
-          case FieldValueType.arrayRemove:
-            transforms.add(FieldTransform(
-              fieldPath: path,
-              removeAllFromArray: ArrayValue(
-                values: value.elements!.map(_toValue).toList(),
-              ),
-            ));
-            break;
-
-          case FieldValueType.increment:
-          case FieldValueType.decrement:
-            num delta = value.elements!.first;
-            transforms.add(FieldTransform(
-              fieldPath: path,
-              increment: Value(
-                integerValue: delta is int ? delta.toString() : null,
-                doubleValue: delta is int ? null : delta.toDouble(),
-              ),
-            ));
-            break;
-
-          case FieldValueType.delete:
-            mask.add(path); // delete handled by updateMask
-            break;
-        }
-      } else {
-        directValues[path] = value;
-        mask.add(path);
-      }
-    });
-
-    List<Write> writes = <Write>[];
-
-    if (transforms.isNotEmpty) {
-      writes.add(
-        Write(
-          transform: DocumentTransform(
-            document: "$_dx/${ref.path}",
-            fieldTransforms: transforms,
-          ),
-        ),
-      );
-    }
-
-    if (mask.isNotEmpty) {
-      writes.add(
-        Write(
-          updateMask: DocumentMask(fieldPaths: mask),
-          update: Document(
-            name: "$_dx/${ref.path}",
-            fields: directValues._toValueMap(),
-          ),
-        ),
-      );
-    }
-
-    await _documents.commit(
-      CommitRequest(
-        writes: writes,
-        transaction: txnId,
-      ),
-      _dbx,
+    await _commitWrites(
+      _buildUpdateWrites(ref.path, patch, atomic: false),
+      transaction: txnId,
     );
   }
 
@@ -396,54 +309,54 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
     String txnId =
         (await _documents.beginTransaction(BeginTransactionRequest(), _dbx))
             .transaction!;
-    DocumentData? data =
-        (await _documents.get("$_dx/${ref.path}", transaction: txnId)).data;
-    await _documents.commit(
-      CommitRequest(
-        writes: [
-          Write(
-            update: Document(
-              name: "$_dx/${ref.path}",
-              fields: txn(data)._toValueMap(),
-            ),
-          ),
-        ],
-        transaction: txnId,
-      ),
-      _dbx,
+
+    final current = await _getDocumentData(ref.path,
+        transaction: txnId, allowMissing: true);
+
+    await _commitWrites(
+      [
+        {
+          'update': {
+            'name': '$_dx/${ref.path}',
+            'fields': _toFirestoreFieldsJson(txn(current)),
+          },
+        },
+      ],
+      transaction: txnId,
     );
   }
 
   @override
-  Future<void> deleteDocument(DocumentReference path) => _documents.commit(
-      CommitRequest(writes: [Write(delete: "$_dx/${path.path}")]), _dbx);
+  Future<void> deleteDocument(DocumentReference path) => _commitWrites([
+        {
+          'delete': '$_dx/${path.path}',
+        },
+      ]);
 
   @override
   Future<DocumentSnapshot> getDocument(DocumentReference ref,
       {bool cached = false}) async {
     try {
-      Document d = await _documents.get("$_dx/${ref.path}");
-      return DocumentSnapshot(ref, d.data, metadata: d);
+      final document = await _getDocumentJson(ref.path);
+      return _documentSnapshotFromJson(ref, document);
     } catch (e) {
+      if (e is _FirestoreRestException && e.statusCode == 404) {
+        return DocumentSnapshot(ref, null);
+      }
       return DocumentSnapshot(ref, null);
     }
   }
 
   @override
   Future<void> setDocument(DocumentReference ref, DocumentData data) =>
-      _documents.commit(
-        CommitRequest(
-          writes: [
-            Write(
-              update: Document(
-                name: "$_dx/${ref.path}",
-                fields: data._toValueMap(),
-              ),
-            ),
-          ],
-        ),
-        _dbx,
-      );
+      _commitWrites([
+        {
+          'update': {
+            'name': '$_dx/${ref.path}',
+            'fields': _toFirestoreFieldsJson(data),
+          },
+        },
+      ]);
 
   @override
   Stream<DocumentSnapshot> streamDocument(DocumentReference ref) =>
@@ -455,190 +368,342 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
           CollectionReference reference) =>
       throw UnimplementedError(
           "streamDocumentsInCollection not supported using Firestore REST apis through google cloud");
-  Map<String, Value> _buildNestedFields(Map<String, dynamic> flatData) {
-    final root = <String, Value>{};
-
-    for (final entry in flatData.entries) {
-      final segments = entry.key.split('.');
-      var current = root;
-      for (var i = 0; i < segments.length - 1; i++) {
-        final seg = segments[i];
-        if (!current.containsKey(seg) || current[seg]!.mapValue == null) {
-          current[seg] = Value(mapValue: MapValue(fields: {}));
-        }
-        current = current[seg]!.mapValue!.fields!;
-      }
-      current[segments.last] =
-          _toValue(entry.value); // Use your existing _toValue
-    }
-
-    return root;
-  }
 
   @override
   Future<void> updateDocument(
-      DocumentReference ref, Map<String, dynamic> data) {
-    final mask = DocumentMask(fieldPaths: [
+          DocumentReference ref, Map<String, dynamic> data) =>
+      _commitWrites(_buildUpdateWrites(ref.path, data));
+
+  @override
+  Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) =>
+      Future.value(DocumentSnapshot(ref, null));
+
+  String _queryParentPath(CollectionReference reference) =>
+      reference.path.contains('/') ? '$_dx/${reference.parent.path}' : _dx;
+
+  Future<dynamic> _postFirestoreJson(
+    String path, {
+    required Map<String, dynamic> body,
+    Map<String, String>? queryParameters,
+  }) =>
+      _requestFirestoreJson(
+        'POST',
+        path,
+        body: body,
+        queryParameters: queryParameters,
+      );
+
+  Future<dynamic> _requestFirestoreJson(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    Map<String, String>? queryParameters,
+  }) async {
+    final filteredQueryParameters = {
+      for (final entry in (queryParameters ?? const {}).entries)
+        if (entry.value.isNotEmpty) entry.key: entry.value,
+    };
+    final baseUri = Uri.parse(
+      'https://firestore.googleapis.com/v1/${Uri.encodeFull(path)}',
+    );
+    final uri = filteredQueryParameters.isEmpty
+        ? baseUri
+        : baseUri.replace(queryParameters: filteredQueryParameters);
+
+    final response = switch (method) {
+      'GET' => await client.get(uri),
+      'POST' => await client.post(
+          uri,
+          headers: {'content-type': 'application/json'},
+          body: body == null ? null : convert.jsonEncode(body),
+        ),
+      _ => throw UnsupportedError('Unsupported Firestore method: $method'),
+    };
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw _FirestoreRestException(
+        method: method,
+        uri: uri,
+        statusCode: response.statusCode,
+        body: response.body,
+      );
+    }
+
+    if (response.body.isEmpty) {
+      return null;
+    }
+
+    return convert.jsonDecode(response.body);
+  }
+
+  Future<Map<String, dynamic>> _getDocumentJson(
+    String path, {
+    String? transaction,
+    bool allowMissing = false,
+  }) async {
+    try {
+      final response = await _requestFirestoreJson(
+        'GET',
+        '$_dx/$path',
+        queryParameters: {
+          if (transaction != null) 'transaction': transaction,
+        },
+      );
+
+      return Map<String, dynamic>.from(response as Map);
+    } catch (e) {
+      if (allowMissing && e is _FirestoreRestException && e.statusCode == 404) {
+        return {};
+      }
+
+      rethrow;
+    }
+  }
+
+  Future<DocumentData?> _getDocumentData(
+    String path, {
+    String? transaction,
+    bool allowMissing = false,
+  }) async {
+    final document = await _getDocumentJson(
+      path,
+      transaction: transaction,
+      allowMissing: allowMissing,
+    );
+
+    return document.isEmpty ? null : _documentDataFromJson(document);
+  }
+
+  Future<void> _commitWrites(
+    List<Map<String, dynamic>> writes, {
+    String? transaction,
+  }) =>
+      _postFirestoreJson(
+        '$_dbx/documents:commit',
+        body: {
+          'writes': writes,
+          if (transaction != null) 'transaction': transaction,
+        },
+      );
+
+  List<Map<String, dynamic>> _buildUpdateWrites(
+    String path,
+    Map<String, dynamic> data, {
+    bool atomic = true,
+  }) {
+    final mask = <String>[
       ...data.entries.where((e) => e.value is! FieldValue).map((e) => e.key),
       ...data.entries
           .where((e) =>
               e.value is FieldValue &&
               (e.value as FieldValue).type == FieldValueType.delete)
           .map((e) => e.key),
-    ]);
+    ];
 
     final hasTransforms = data.values
         .any((e) => e is FieldValue && e.type != FieldValueType.delete);
-
     final hasUpdateOrDelete = data.values
-        .any((e) => e is! FieldValue || (e.type == FieldValueType.delete));
+        .any((e) => e is! FieldValue || e.type == FieldValueType.delete);
+    final precondition = atomic ? <String, dynamic>{'exists': true} : null;
+    final writes = <Map<String, dynamic>>[];
 
-    return _documents.commit(
-      CommitRequest(writes: [
-        if (hasTransforms)
-          Write(
-            // IMPORTANT: no updateMask here (operation is transform)
-            transform: DocumentTransform(
-              document: "$_dx/${ref.path}",
-              fieldTransforms: [
-                ...data.entries
-                    .where((e) =>
-                        e.value is FieldValue &&
-                        (e.value as FieldValue).type != FieldValueType.delete)
-                    .map((e) {
-                  final fv = e.value as FieldValue;
-                  return FieldTransform(
-                    fieldPath: e.key,
-                    setToServerValue: fv.type == FieldValueType.serverTimestamp
-                        ? "REQUEST_TIME"
-                        : null,
-                    appendMissingElements: fv.type == FieldValueType.arrayUnion
-                        ? ArrayValue(
-                            values: fv.elements!.map(_toValue).toList())
-                        : null,
-                    removeAllFromArray: fv.type == FieldValueType.arrayRemove
-                        ? ArrayValue(
-                            values: fv.elements!.map(_toValue).toList())
-                        : null,
-                    increment: fv.type == FieldValueType.increment
-                        ? Value(
-                            integerValue: fv.elements![0] is int
-                                ? fv.elements![0].toString()
-                                : null,
-                            doubleValue: fv.elements![0] is! int
-                                ? (fv.elements![0] as num).toDouble()
-                                : null,
-                          )
-                        : fv.type == FieldValueType.decrement
-                            ? Value(
-                                integerValue: fv.elements![0] is int
-                                    ? (-(fv.elements![0] as int)).toString()
-                                    : null,
-                                doubleValue: fv.elements![0] is! int
-                                    ? -(fv.elements![0] as num).toDouble()
-                                    : null,
-                              )
-                            : null,
-                  );
-                }),
-              ],
+    if (hasTransforms) {
+      writes.add({
+        'transform': {
+          'document': '$_dx/$path',
+          'fieldTransforms': [
+            for (final entry in data.entries.where((e) =>
+                e.value is FieldValue &&
+                (e.value as FieldValue).type != FieldValueType.delete))
+              _fieldTransformJson(entry.key, entry.value as FieldValue),
+          ],
+        },
+        if (precondition != null) 'currentDocument': precondition,
+      });
+    }
+
+    if (hasUpdateOrDelete) {
+      writes.add({
+        'updateMask': {
+          'fieldPaths': mask,
+        },
+        'update': {
+          'name': '$_dx/$path',
+          'fields': _buildNestedFieldsJson(
+            Map<String, dynamic>.fromEntries(
+              data.entries.where((e) => e.value is! FieldValue),
             ),
-            currentDocument: Precondition(exists: true),
           ),
-        if (hasUpdateOrDelete)
-          Write(
-            updateMask: mask, // CRITICAL: mask must be on update
-            update: Document(
-              name: "$_dx/${ref.path}",
-              fields: _buildNestedFields(
-                Map.fromEntries(
-                  data.entries.where((e) => e.value is! FieldValue),
-                ),
-              ),
+        },
+        if (precondition != null) 'currentDocument': precondition,
+      });
+    }
+
+    return writes;
+  }
+
+  Map<String, dynamic> _fieldTransformJson(String path, FieldValue value) =>
+      switch (value.type) {
+        FieldValueType.serverTimestamp => {
+            'fieldPath': path,
+            'setToServerValue': 'REQUEST_TIME',
+          },
+        FieldValueType.arrayUnion => {
+            'fieldPath': path,
+            'appendMissingElements': {
+              'values': value.elements!.map(_toFirestoreValueJson).toList(),
+            },
+          },
+        FieldValueType.arrayRemove => {
+            'fieldPath': path,
+            'removeAllFromArray': {
+              'values': value.elements!.map(_toFirestoreValueJson).toList(),
+            },
+          },
+        FieldValueType.increment => {
+            'fieldPath': path,
+            'increment': _toFirestoreValueJson(value.elements!.first),
+          },
+        FieldValueType.decrement => {
+            'fieldPath': path,
+            'increment': _toFirestoreValueJson(
+              -(value.elements!.first as num),
             ),
-            currentDocument: Precondition(exists: true),
+          },
+        FieldValueType.delete => throw ArgumentError(
+            'Delete field values are not transforms.',
           ),
-      ]),
-      _dbx,
+      };
+
+  Map<String, dynamic> _buildNestedFieldsJson(Map<String, dynamic> flatData) {
+    final root = <String, dynamic>{};
+
+    for (final entry in flatData.entries) {
+      final segments = entry.key.split('.');
+      var current = root;
+
+      for (var i = 0; i < segments.length - 1; i++) {
+        final segment = segments[i];
+        current = (current.putIfAbsent(
+                segment,
+                () => {
+                      'mapValue': {'fields': <String, dynamic>{}},
+                    }) as Map<String, dynamic>)['mapValue']['fields']
+            as Map<String, dynamic>;
+      }
+
+      current[segments.last] = _toFirestoreValueJson(entry.value);
+    }
+
+    return root;
+  }
+
+  Map<String, dynamic> _firstAggregationFields(dynamic response) {
+    final results = (response as List)
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .where((entry) => entry['result'] is Map)
+        .map((entry) => Map<String, dynamic>.from(entry['result'] as Map))
+        .where((entry) => entry['aggregateFields'] is Map);
+
+    if (results.isEmpty) {
+      return const {};
+    }
+
+    return Map<String, dynamic>.from(
+      results.first['aggregateFields'] as Map,
     );
   }
 
-  @override
-  Future<DocumentSnapshot> getDocumentCachedOnly(DocumentReference ref) =>
-      Future.value(DocumentSnapshot(ref, null));
-}
-
-extension _XClause on Clause {
-  FieldFilter get toFilter => FieldFilter(
-        field: FieldReference(fieldPath: field),
-        op: operator.op,
-        value: _toValue(value),
+  DocumentSnapshot _documentSnapshotFromJson(
+    DocumentReference ref,
+    Map<String, dynamic> document,
+  ) =>
+      DocumentSnapshot(
+        ref,
+        _documentDataFromJson(document),
+        metadata: document,
       );
 }
 
+extension _XClause on Clause {
+  Map<String, dynamic> get toFilterJson => {
+        'field': {'fieldPath': field},
+        'op': operator.op,
+        'value': _toFirestoreValueJson(value),
+      };
+}
+
 extension _XCollectionReference on CollectionReference {
-  StructuredQuery get toQuery => StructuredQuery(
-      from: [CollectionSelector(collectionId: id)],
-      limit: qLimit,
-      startAt: qStartAtValues != null
-          ? Cursor(
-              values: qStartAtValues!.map((v) => _toValue(v)).toList(),
-              before: false)
-          : qStartAfterValues != null
-              ? Cursor(
-                  values: qStartAfterValues!.map((v) => _toValue(v)).toList(),
-                  before: true)
-              : qStartAt?.metadata is Document
-                  ? Cursor(
-                      values: (qStartAt!.metadata.data ?? {}).values.toList(),
-                      before: false)
-                  : qStartAfter?.metadata is Document
-                      ? Cursor(
-                          values: (qStartAfter!.metadata.data ?? {})
-                              .values
-                              .toList(),
-                          before: true,
-                        )
-                      : null,
-      endAt: qEndAtValues != null
-          ? Cursor(
-              values: qEndAtValues!.map((v) => _toValue(v)).toList(),
-              before: true)
-          : qEndBeforeValues != null
-              ? Cursor(
-                  values: qEndBeforeValues!.map((v) => _toValue(v)).toList(),
-                  before: false)
-              : qEndAt?.metadata is Document
-                  ? Cursor(
-                      values: (qEndAt!.metadata.data ?? {}).values.toList(),
-                      before: true)
-                  : qEndBefore?.metadata is Document
-                      ? Cursor(
-                          values:
-                              (qEndBefore!.metadata.data ?? {}).values.toList(),
-                          before: false,
-                        )
-                      : null,
-      orderBy: qOrderBy != null
-          ? [
-              Order(
-                direction: descending ? "DESCENDING" : "ASCENDING",
-                field: FieldReference(fieldPath: qOrderBy),
-              )
-            ]
-          : null,
-      where: clauses.isNotEmpty
-          ? Filter(
-              compositeFilter: clauses.length > 1
-                  ? CompositeFilter(
-                      op: "AND",
-                      filters: clauses
-                          .map((e) => Filter(fieldFilter: e.toFilter))
-                          .toList())
-                  : null,
-              fieldFilter: clauses.length == 1 ? clauses[0].toFilter : null,
-            )
-          : null);
+  Map<String, dynamic> get toQueryJson => {
+        'from': [
+          {'collectionId': id},
+        ],
+        if (qLimit != null) 'limit': qLimit,
+        if (qStartAtValues != null)
+          'startAt': {
+            'values': qStartAtValues!.map(_toFirestoreValueJson).toList(),
+            'before': false,
+          }
+        else if (qStartAfterValues != null)
+          'startAt': {
+            'values': qStartAfterValues!.map(_toFirestoreValueJson).toList(),
+            'before': true,
+          }
+        else if (qStartAt?.data != null)
+          'startAt': {
+            'values':
+                qStartAt!.data!.values.map(_toFirestoreValueJson).toList(),
+            'before': false,
+          }
+        else if (qStartAfter?.data != null)
+          'startAt': {
+            'values':
+                qStartAfter!.data!.values.map(_toFirestoreValueJson).toList(),
+            'before': true,
+          },
+        if (qEndAtValues != null)
+          'endAt': {
+            'values': qEndAtValues!.map(_toFirestoreValueJson).toList(),
+            'before': true,
+          }
+        else if (qEndBeforeValues != null)
+          'endAt': {
+            'values': qEndBeforeValues!.map(_toFirestoreValueJson).toList(),
+            'before': false,
+          }
+        else if (qEndAt?.data != null)
+          'endAt': {
+            'values': qEndAt!.data!.values.map(_toFirestoreValueJson).toList(),
+            'before': true,
+          }
+        else if (qEndBefore?.data != null)
+          'endAt': {
+            'values':
+                qEndBefore!.data!.values.map(_toFirestoreValueJson).toList(),
+            'before': false,
+          },
+        if (qOrderBy != null)
+          'orderBy': [
+            {
+              'direction': descending ? 'DESCENDING' : 'ASCENDING',
+              'field': {'fieldPath': qOrderBy},
+            },
+          ],
+        if (clauses.isNotEmpty)
+          'where': clauses.length > 1
+              ? {
+                  'compositeFilter': {
+                    'op': 'AND',
+                    'filters': clauses
+                        .map((clause) => {'fieldFilter': clause.toFilterJson})
+                        .toList(),
+                  },
+                }
+              : {
+                  'fieldFilter': clauses.first.toFilterJson,
+                },
+      };
 }
 
 extension _XFieldOp on ClauseOperator {
@@ -657,53 +722,127 @@ extension _XFieldOp on ClauseOperator {
       };
 }
 
-dynamic _fromValue(Value v) {
-  if (v.nullValue != null) return null;
-  if (v.stringValue != null) return v.stringValue;
-  if (v.integerValue != null) return int.tryParse(v.integerValue!) ?? 0;
-  if (v.doubleValue != null) return v.doubleValue;
-  if (v.booleanValue != null) return v.booleanValue;
-  if (v.arrayValue != null) {
-    return v.arrayValue?.values?.map(_fromValue).toList();
+Map<String, dynamic> _toFirestoreValueJson(dynamic value) {
+  if (value == null) {
+    return {'nullValue': 'NULL_VALUE'};
   }
-  if (v.mapValue != null) return v.mapValue?.fields?._toDynamicMap();
-  throw Exception("Unsupported type: ${v.toJson()}");
+
+  return switch (value) {
+    VectorValue _ => {
+        'vectorValue': {
+          'values': value.toArray(),
+        },
+      },
+    String _ => {'stringValue': value},
+    int _ => {'integerValue': value.toString()},
+    double _ => {'doubleValue': value},
+    bool _ => {'booleanValue': value},
+    List _ => {
+        'arrayValue': {
+          'values': value.map(_toFirestoreValueJson).toList(),
+        },
+      },
+    Map _ => {
+        'mapValue': {
+          'fields': Map<String, dynamic>.fromEntries(
+            value.entries.map(
+              (entry) => MapEntry(
+                entry.key as String,
+                _toFirestoreValueJson(entry.value),
+              ),
+            ),
+          ),
+        },
+      },
+    _ => throw Exception('Unsupported type: ${value.runtimeType}'),
+  };
 }
 
-Value _toValue(dynamic v) {
-  return v == null
-      ? Value(nullValue: "NULL_VALUE")
-      : switch (v) {
-          String _ => Value(stringValue: v),
-          int _ => Value(integerValue: v.toString()),
-          double _ => Value(doubleValue: v),
-          bool _ => Value(booleanValue: v),
-          List _ =>
-            Value(arrayValue: ArrayValue(values: v.map(_toValue).toList())),
-          Map _ => Value(
-              mapValue:
-                  MapValue(fields: v.map((k, v) => MapEntry(k, _toValue(v))))),
-          _ => throw Exception("Unsupported type: ${v.runtimeType}"),
-        };
+dynamic _fromFirestoreValueJson(Map<String, dynamic> value) {
+  if (value.containsKey('nullValue')) return null;
+  if (value['stringValue'] != null) return value['stringValue'];
+  if (value['integerValue'] != null) {
+    return int.tryParse(value['integerValue'] as String) ?? 0;
+  }
+  if (value['doubleValue'] != null) {
+    return (value['doubleValue'] as num).toDouble();
+  }
+  if (value['booleanValue'] != null) return value['booleanValue'];
+  if (value['vectorValue'] != null) {
+    final vector = Map<String, dynamic>.from(value['vectorValue'] as Map);
+    return VectorValue(
+      ((vector['values'] as List?) ?? const [])
+          .map((item) => (item as num).toDouble())
+          .toList(),
+    );
+  }
+  if (value['arrayValue'] != null) {
+    final array = Map<String, dynamic>.from(value['arrayValue'] as Map);
+    return ((array['values'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => _fromFirestoreValueJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+  if (value['mapValue'] != null) {
+    final mapValue = Map<String, dynamic>.from(value['mapValue'] as Map);
+    final fields = mapValue['fields'];
+    return fields is Map
+        ? Map<String, dynamic>.fromEntries(
+            fields.entries.map(
+              (entry) => MapEntry(
+                entry.key as String,
+                _fromFirestoreValueJson(
+                  Map<String, dynamic>.from(entry.value as Map),
+                ),
+              ),
+            ),
+          )
+        : <String, dynamic>{};
+  }
+
+  throw Exception('Unsupported type: $value');
 }
 
-extension _XMapStringVal on Map<String, Value> {
-  Map<String, dynamic> _toDynamicMap() =>
-      map((k, v) => MapEntry(k, _fromValue(v)));
+Map<String, dynamic> _toFirestoreFieldsJson(Map<String, dynamic> data) =>
+    Map<String, dynamic>.fromEntries(
+      data.entries.map(
+        (entry) => MapEntry(entry.key, _toFirestoreValueJson(entry.value)),
+      ),
+    );
+
+Map<String, dynamic>? _documentDataFromJson(Map<String, dynamic> document) {
+  final fields = document['fields'];
+  if (fields is! Map) {
+    return null;
+  }
+
+  return Map<String, dynamic>.fromEntries(
+    fields.entries.map(
+      (entry) => MapEntry(
+        entry.key as String,
+        _fromFirestoreValueJson(Map<String, dynamic>.from(entry.value as Map)),
+      ),
+    ),
+  );
 }
 
-extension _XMapStringDyn on Map<String, dynamic> {
-  Map<String, Value> _toValueMap() => map((k, v) => MapEntry(k, _toValue(v)));
-}
+bool _documentExists(Map<String, dynamic> document) =>
+    document['fields'] != null;
 
-extension _XPathString on String {
-  String? get parent => contains("/")
-      ? split("/").sublist(0, split("/").length - 1).join("/")
-      : null;
-}
+class _FirestoreRestException implements Exception {
+  final String method;
+  final Uri uri;
+  final int statusCode;
+  final String body;
 
-extension _XDocument on Document {
-  bool get exists => fields != null;
+  const _FirestoreRestException({
+    required this.method,
+    required this.uri,
+    required this.statusCode,
+    required this.body,
+  });
 
-  Map<String, dynamic>? get data => fields?._toDynamicMap();
+  @override
+  String toString() =>
+      'Firestore request failed [$statusCode] $method $uri: $body';
 }

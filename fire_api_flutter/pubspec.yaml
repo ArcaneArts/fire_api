@@ -1,6 +1,6 @@
 name: fire_api_flutter
 description: "An implementation for fire_api for flutter apps using cloud_firestore."
-version: 1.5.4
+version: 1.5.5
 repository: https://github.com/ArcaneArts/fire_api/tree/main/fire_api_flutter
 environment:
   sdk: '>=3.0.0 <4.0.0'
