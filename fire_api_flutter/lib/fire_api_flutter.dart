@@ -67,7 +67,7 @@ extension _XCollectionReference on CollectionReference {
     }
 
     if (qStartAfterValues != null) {
-      d = d.endAt(qStartAfterValues!);
+      d = d.startAfter(qStartAfterValues!);
     }
 
     if (qEndBeforeValues != null) {
@@ -147,223 +147,6 @@ Future<String?> _defaultFirestoreIdTokenProvider() async {
       fa.FirebaseAuth.instanceFor(app: cf.FirebaseFirestore.instance.app)
           .currentUser;
   return user?.getIdToken();
-}
-
-Map<String, dynamic> _toFirestoreJsonValue(dynamic value) {
-  if (value == null) {
-    return {'nullValue': 'NULL_VALUE'};
-  }
-
-  return switch (value) {
-    VectorValue _ => {
-        'vectorValue': {
-          'values': value.toArray(),
-        },
-      },
-    String _ => {'stringValue': value},
-    int _ => {'integerValue': value.toString()},
-    double _ => {'doubleValue': value},
-    bool _ => {'booleanValue': value},
-    List _ => {
-        'arrayValue': {
-          'values': value.map(_toFirestoreJsonValue).toList(),
-        },
-      },
-    Map _ => {
-        'mapValue': {
-          'fields': Map<String, dynamic>.fromEntries(
-            value.entries.map(
-              (entry) => MapEntry(
-                entry.key as String,
-                _toFirestoreJsonValue(entry.value),
-              ),
-            ),
-          ),
-        },
-      },
-    _ => throw Exception('Unsupported type: ${value.runtimeType}'),
-  };
-}
-
-dynamic _fromFirestoreJsonValue(Map<String, dynamic> value) {
-  if (value.containsKey('nullValue')) return null;
-  if (value['stringValue'] != null) return value['stringValue'];
-  if (value['integerValue'] != null) {
-    return int.tryParse(value['integerValue'] as String) ?? 0;
-  }
-  if (value['doubleValue'] != null) {
-    return (value['doubleValue'] as num).toDouble();
-  }
-  if (value['booleanValue'] != null) return value['booleanValue'];
-  if (value['vectorValue'] != null) {
-    final vector = Map<String, dynamic>.from(value['vectorValue'] as Map);
-    return VectorValue(
-      ((vector['values'] as List?) ?? const [])
-          .map((item) => (item as num).toDouble())
-          .toList(),
-    );
-  }
-  if (value['arrayValue'] != null) {
-    final array = Map<String, dynamic>.from(value['arrayValue'] as Map);
-    return ((array['values'] as List?) ?? const [])
-        .whereType<Map>()
-        .map((item) => _fromFirestoreJsonValue(Map<String, dynamic>.from(item)))
-        .toList();
-  }
-  if (value['mapValue'] != null) {
-    final mapValue = Map<String, dynamic>.from(value['mapValue'] as Map);
-    final fields = mapValue['fields'];
-    return fields is Map
-        ? Map<String, dynamic>.fromEntries(
-            fields.entries.map(
-              (entry) => MapEntry(
-                entry.key as String,
-                _fromFirestoreJsonValue(
-                    Map<String, dynamic>.from(entry.value as Map)),
-              ),
-            ),
-          )
-        : <String, dynamic>{};
-  }
-
-  throw Exception('Unsupported type: $value');
-}
-
-Map<String, dynamic>? _documentDataFromFirestoreJson(
-  Map<String, dynamic> document,
-) {
-  final fields = document['fields'];
-  if (fields is! Map) {
-    return null;
-  }
-
-  return Map<String, dynamic>.fromEntries(
-    fields.entries.map(
-      (entry) => MapEntry(
-        entry.key as String,
-        _fromFirestoreJsonValue(Map<String, dynamic>.from(entry.value as Map)),
-      ),
-    ),
-  );
-}
-
-extension _XVectorFirestoreClause on Clause {
-  Map<String, dynamic> get toFilterJson => {
-        'field': {'fieldPath': field},
-        'op': operator.firestoreApiName,
-        'value': _toFirestoreJsonValue(value),
-      };
-}
-
-extension _XVectorFirestoreCollectionReference on CollectionReference {
-  Map<String, dynamic> get toVectorQueryJson => {
-        'from': [
-          {'collectionId': id},
-        ],
-        if (qOrderBy != null)
-          'orderBy': [
-            {
-              'direction': descending ? 'DESCENDING' : 'ASCENDING',
-              'field': {'fieldPath': qOrderBy},
-            },
-          ],
-        if (qStartAtValues != null)
-          'startAt': {
-            'values': qStartAtValues!.map(_toFirestoreJsonValue).toList(),
-            'before': false,
-          }
-        else if (qStartAfterValues != null)
-          'startAt': {
-            'values': qStartAfterValues!.map(_toFirestoreJsonValue).toList(),
-            'before': true,
-          }
-        else if (qStartAt?.data != null)
-          'startAt': {
-            'values':
-                qStartAt!.data!.values.map(_toFirestoreJsonValue).toList(),
-            'before': false,
-          }
-        else if (qStartAfter?.data != null)
-          'startAt': {
-            'values':
-                qStartAfter!.data!.values.map(_toFirestoreJsonValue).toList(),
-            'before': true,
-          },
-        if (qEndAtValues != null)
-          'endAt': {
-            'values': qEndAtValues!.map(_toFirestoreJsonValue).toList(),
-            'before': true,
-          }
-        else if (qEndBeforeValues != null)
-          'endAt': {
-            'values': qEndBeforeValues!.map(_toFirestoreJsonValue).toList(),
-            'before': false,
-          }
-        else if (qEndAt?.data != null)
-          'endAt': {
-            'values': qEndAt!.data!.values.map(_toFirestoreJsonValue).toList(),
-            'before': true,
-          }
-        else if (qEndBefore?.data != null)
-          'endAt': {
-            'values':
-                qEndBefore!.data!.values.map(_toFirestoreJsonValue).toList(),
-            'before': false,
-          },
-        if (clauses.isNotEmpty)
-          'where': clauses.length > 1
-              ? {
-                  'compositeFilter': {
-                    'op': 'AND',
-                    'filters': clauses
-                        .map((clause) => {'fieldFilter': clause.toFilterJson})
-                        .toList(),
-                  },
-                }
-              : {
-                  'fieldFilter': clauses.first.toFilterJson,
-                },
-      };
-}
-
-extension _XVectorFirestoreQueryReference on VectorQueryReference {
-  Map<String, dynamic> get toFirestoreQueryJson => {
-        ...reference.toVectorQueryJson,
-        'findNearest': {
-          'vectorField': {
-            'fieldPath': vectorField,
-          },
-          'queryVector': _toFirestoreJsonValue(queryVector),
-          'limit': limit,
-          'distanceMeasure': distanceMeasure.firestoreApiName,
-          if (distanceResultField != null)
-            'distanceResultField': distanceResultField,
-          if (distanceThreshold != null) 'distanceThreshold': distanceThreshold,
-        },
-      };
-}
-
-extension _XVectorFirestoreClauseOperator on ClauseOperator {
-  String get firestoreApiName => switch (this) {
-        ClauseOperator.lessThan => 'LESS_THAN',
-        ClauseOperator.lessThanOrEqual => 'LESS_THAN_OR_EQUAL',
-        ClauseOperator.equal => 'EQUAL',
-        ClauseOperator.greaterThan => 'GREATER_THAN',
-        ClauseOperator.greaterThanOrEqual => 'GREATER_THAN_OR_EQUAL',
-        ClauseOperator.notEqual => 'NOT_EQUAL',
-        ClauseOperator.arrayContains => 'ARRAY_CONTAINS',
-        ClauseOperator.arrayContainsAny => 'ARRAY_CONTAINS_ANY',
-        ClauseOperator.isIn => 'IN',
-        ClauseOperator.notIn => 'NOT_IN',
-      };
-}
-
-extension _XVectorFirestoreDistanceMeasure on VectorDistanceMeasure {
-  String get firestoreApiName => switch (this) {
-        VectorDistanceMeasure.euclidean => 'EUCLIDEAN',
-        VectorDistanceMeasure.cosine => 'COSINE',
-        VectorDistanceMeasure.dotProduct => 'DOT_PRODUCT',
-      };
 }
 
 class FirebaseFireStorage extends FireStorage {
@@ -512,28 +295,40 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
   @override
   Future<List<DocumentSnapshot>> getNearestDocumentsInCollection(
       VectorQueryReference reference) async {
-    final response = await _postFirestoreJson(
-      path: '${_queryParentPath(reference.reference)}:runQuery',
-      body: {
-        'structuredQuery': reference.toFirestoreQueryJson,
-      },
-    );
+    try {
+      final response = await _postFirestoreJson(
+        '${_queryParentPath(reference.reference)}:runQuery',
+        body: {
+          'structuredQuery': reference.toQueryJson,
+        },
+      );
 
-    return (response as List)
-        .whereType<Map>()
-        .map((entry) => Map<String, dynamic>.from(entry))
-        .where((entry) => entry['document'] is Map)
-        .map((entry) => Map<String, dynamic>.from(entry['document'] as Map))
-        .where((document) => document['fields'] != null)
-        .map(
-          (document) => DocumentSnapshot(
-            reference.reference
-                .doc((document['name'] as String).split('/').last),
-            _documentDataFromFirestoreJson(document),
-            metadata: document,
-          ),
-        )
-        .toList();
+      return (response as List)
+          .whereType<Map>()
+          .map((entry) => Map<String, dynamic>.from(entry))
+          .where((entry) => entry['document'] is Map)
+          .map((entry) => Map<String, dynamic>.from(entry['document'] as Map))
+          .where((entry) => entry['fields'] is Map)
+          .map((document) => DocumentSnapshot(
+                reference.reference
+                    .doc((document['name'] as String).split('/').last),
+                _decodeFirestoreRestDocumentData(document),
+                metadata: document,
+              ))
+          .toList();
+    } catch (error) {
+      final indexHint = _tryBuildMissingVectorIndexErrorMessage(
+        error,
+        projectId: _projectId,
+        databaseId: databaseId,
+        reference: reference,
+      );
+      if (indexHint != null) {
+        throw StateError(indexHint);
+      }
+
+      rethrow;
+    }
   }
 
   @override
@@ -634,45 +429,64 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
     final projectId = cf.FirebaseFirestore.instance.app.options.projectId;
     if (projectId.isEmpty) {
       throw StateError(
-          'Firebase app projectId is required for Firestore vector queries.');
+          'FirebaseFirestore.instance.app.options.projectId is required for vector queries.');
     }
-
     return projectId;
   }
 
   String get _dbx => 'projects/$_projectId/databases/$databaseId';
-
-  String _documentPath(String path) => effectivePath(path);
+  String get _dx => '$_dbx/documents';
 
   String _queryParentPath(CollectionReference reference) {
-    final fullPath = _documentPath(reference.path);
-    if (!fullPath.contains('/')) {
-      return '$_dbx/documents';
+    final effectivePath = reference._effectivePath;
+    final segments = effectivePath
+        .split('/')
+        .where((segment) => segment.isNotEmpty)
+        .toList();
+    if (segments.length <= 1) {
+      return _dx;
     }
 
-    return '$_dbx/documents/${fullPath.split('/').sublist(0, fullPath.split('/').length - 1).join('/')}';
+    return '$_dx/${segments.sublist(0, segments.length - 1).join('/')}';
   }
 
-  Future<dynamic> _postFirestoreJson({
-    required String path,
+  Future<dynamic> _postFirestoreJson(
+    String path, {
     required Map<String, dynamic> body,
+  }) =>
+      _requestFirestoreJson(
+        'POST',
+        path,
+        body: body,
+      );
+
+  Future<dynamic> _requestFirestoreJson(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
   }) async {
-    final token = await idTokenProvider();
     final uri = Uri.parse(
       'https://firestore.googleapis.com/v1/${Uri.encodeFull(path)}',
     );
-    final response = await client.post(
-      uri,
-      headers: {
-        'content-type': 'application/json',
-        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
-      },
-      body: convert.jsonEncode(body),
-    );
+    final idToken = await idTokenProvider();
+    final headers = <String, String>{
+      'content-type': 'application/json',
+      if (idToken != null && idToken.isNotEmpty)
+        'authorization': 'Bearer $idToken',
+    };
+
+    final response = switch (method) {
+      'POST' => await client.post(
+          uri,
+          headers: headers,
+          body: body == null ? null : convert.jsonEncode(body),
+        ),
+      _ => throw UnsupportedError('Unsupported Firestore method: $method'),
+    };
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError(
-        'Firestore vector query failed [${response.statusCode}] ${response.body}',
+        'Firestore vector query failed [${response.statusCode}] [${response.body}]',
       );
     }
 
@@ -682,4 +496,310 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
 
     return convert.jsonDecode(response.body);
   }
+}
+
+extension _XRestCollectionReference on CollectionReference {
+  String get _effectivePath => db.effectivePath(path);
+
+  Map<String, dynamic> get toQueryJson => {
+        'from': [
+          {'collectionId': _effectivePath.split('/').last},
+        ],
+        if (qLimit != null) 'limit': qLimit,
+        if (qStartAtValues != null)
+          'startAt': {
+            'values': qStartAtValues!.map(_encodeFirestoreRestValue).toList(),
+            'before': false,
+          }
+        else if (qStartAfterValues != null)
+          'startAt': {
+            'values':
+                qStartAfterValues!.map(_encodeFirestoreRestValue).toList(),
+            'before': true,
+          }
+        else if (qStartAt?.data != null)
+          'startAt': {
+            'values':
+                qStartAt!.data!.values.map(_encodeFirestoreRestValue).toList(),
+            'before': false,
+          }
+        else if (qStartAfter?.data != null)
+          'startAt': {
+            'values': qStartAfter!.data!.values
+                .map(_encodeFirestoreRestValue)
+                .toList(),
+            'before': true,
+          },
+        if (qEndAtValues != null)
+          'endAt': {
+            'values': qEndAtValues!.map(_encodeFirestoreRestValue).toList(),
+            'before': true,
+          }
+        else if (qEndBeforeValues != null)
+          'endAt': {
+            'values': qEndBeforeValues!.map(_encodeFirestoreRestValue).toList(),
+            'before': false,
+          }
+        else if (qEndAt?.data != null)
+          'endAt': {
+            'values':
+                qEndAt!.data!.values.map(_encodeFirestoreRestValue).toList(),
+            'before': true,
+          }
+        else if (qEndBefore?.data != null)
+          'endAt': {
+            'values': qEndBefore!.data!.values
+                .map(_encodeFirestoreRestValue)
+                .toList(),
+            'before': false,
+          },
+        if (qOrderBy != null)
+          'orderBy': [
+            {
+              'direction': descending ? 'DESCENDING' : 'ASCENDING',
+              'field': {'fieldPath': qOrderBy},
+            },
+          ],
+        if (clauses.isNotEmpty)
+          'where': clauses.length > 1
+              ? {
+                  'compositeFilter': {
+                    'op': 'AND',
+                    'filters': clauses
+                        .map((clause) => {'fieldFilter': clause.toFilterJson})
+                        .toList(),
+                  },
+                }
+              : {
+                  'fieldFilter': clauses.first.toFilterJson,
+                },
+      };
+}
+
+extension _XRestVectorQueryReference on VectorQueryReference {
+  Map<String, dynamic> get toQueryJson => {
+        ...reference.toQueryJson,
+        'findNearest': {
+          'vectorField': {'fieldPath': vectorField},
+          'queryVector': _encodeFirestoreRestValue(queryVector),
+          'limit': limit,
+          'distanceMeasure': distanceMeasure.firestoreValue,
+          if (distanceResultField != null)
+            'distanceResultField': distanceResultField,
+          if (distanceThreshold != null) 'distanceThreshold': distanceThreshold,
+        },
+      };
+}
+
+extension _XRestClause on Clause {
+  Map<String, dynamic> get toFilterJson => {
+        'field': {'fieldPath': field},
+        'op': operator.firestoreValue,
+        'value': _encodeFirestoreRestValue(value),
+      };
+}
+
+extension _XRestClauseOperator on ClauseOperator {
+  String get firestoreValue => switch (this) {
+        ClauseOperator.lessThan => 'LESS_THAN',
+        ClauseOperator.lessThanOrEqual => 'LESS_THAN_OR_EQUAL',
+        ClauseOperator.equal => 'EQUAL',
+        ClauseOperator.greaterThan => 'GREATER_THAN',
+        ClauseOperator.greaterThanOrEqual => 'GREATER_THAN_OR_EQUAL',
+        ClauseOperator.notEqual => 'NOT_EQUAL',
+        ClauseOperator.arrayContains => 'ARRAY_CONTAINS',
+        ClauseOperator.arrayContainsAny => 'ARRAY_CONTAINS_ANY',
+        ClauseOperator.isIn => 'IN',
+        ClauseOperator.notIn => 'NOT_IN',
+      };
+}
+
+extension _XRestVectorDistanceMeasure on VectorDistanceMeasure {
+  String get firestoreValue => switch (this) {
+        VectorDistanceMeasure.euclidean => 'EUCLIDEAN',
+        VectorDistanceMeasure.cosine => 'COSINE',
+        VectorDistanceMeasure.dotProduct => 'DOT_PRODUCT',
+      };
+}
+
+const String _firestoreVectorTypeKey = '__type__';
+const String _firestoreVectorTypeSentinel = '__vector__';
+const String _firestoreVectorValueKey = 'value';
+
+String? _tryBuildMissingVectorIndexErrorMessage(
+  Object error, {
+  required String projectId,
+  required String databaseId,
+  required VectorQueryReference reference,
+}) {
+  final raw = error.toString();
+  if (!raw.contains('Missing vector index configuration')) {
+    return null;
+  }
+
+  final collectionGroup = reference.reference.path.split('/').last;
+  final fieldConfig = _shellSingleQuote(
+    'field-path=${reference.vectorField},vector-config={"dimension":${reference.queryVector.toArray().length},"flat":{}}',
+  );
+
+  return [
+    'Firestore vector query failed: missing vector index for collection group "$collectionGroup" on field "${reference.vectorField}".',
+    '',
+    'Create it with:',
+    '',
+    'gcloud firestore indexes composite create \\',
+    '  --project=${_shellSingleQuote(projectId)} \\',
+    if (databaseId != '(default)')
+      '  --database=${_shellSingleQuote(databaseId)} \\',
+    '  --collection-group=${_shellSingleQuote(collectionGroup)} \\',
+    '  --query-scope=collection \\',
+    '  --field-config=$fieldConfig',
+    '',
+    'Original Firestore response:',
+    raw,
+  ].join('\n');
+}
+
+String _shellSingleQuote(String value) =>
+    "'${value.replaceAll("'", "'\"'\"'")}'";
+
+Map<String, dynamic> _encodeFirestoreRestValue(dynamic value) {
+  if (value == null) {
+    return {'nullValue': 'NULL_VALUE'};
+  }
+
+  return switch (value) {
+    VectorValue _ => {
+        'mapValue': {
+          'fields': {
+            _firestoreVectorTypeKey: {
+              'stringValue': _firestoreVectorTypeSentinel,
+            },
+            _firestoreVectorValueKey: {
+              'arrayValue': {
+                'values': value
+                    .toArray()
+                    .map((item) => {
+                          'doubleValue': item.toDouble(),
+                        })
+                    .toList(),
+              },
+            },
+          },
+        },
+      },
+    String _ => {'stringValue': value},
+    int _ => {'integerValue': value.toString()},
+    double _ => {'doubleValue': value},
+    bool _ => {'booleanValue': value},
+    List _ => {
+        'arrayValue': {
+          'values': value.map(_encodeFirestoreRestValue).toList(),
+        },
+      },
+    Map _ => {
+        'mapValue': {
+          'fields': Map<String, dynamic>.fromEntries(
+            value.entries.map(
+              (entry) => MapEntry(
+                entry.key as String,
+                _encodeFirestoreRestValue(entry.value),
+              ),
+            ),
+          ),
+        },
+      },
+    _ => throw Exception('Unsupported type: ${value.runtimeType}'),
+  };
+}
+
+DocumentData? _decodeFirestoreRestDocumentData(Map<String, dynamic> document) {
+  final fields = document['fields'];
+  if (fields is! Map) {
+    return null;
+  }
+
+  return Map<String, dynamic>.fromEntries(
+    fields.entries.map(
+      (entry) => MapEntry(
+        entry.key as String,
+        _decodeFirestoreRestValue(
+            Map<String, dynamic>.from(entry.value as Map)),
+      ),
+    ),
+  );
+}
+
+dynamic _decodeFirestoreRestValue(Map<String, dynamic> value) {
+  if (value.containsKey('nullValue')) return null;
+  if (value['stringValue'] != null) return value['stringValue'];
+  if (value['integerValue'] != null) {
+    return int.tryParse(value['integerValue'] as String) ?? 0;
+  }
+  if (value['doubleValue'] != null) {
+    return (value['doubleValue'] as num).toDouble();
+  }
+  if (value['booleanValue'] != null) return value['booleanValue'];
+  if (value['vectorValue'] != null) {
+    final vector = Map<String, dynamic>.from(value['vectorValue'] as Map);
+    return VectorValue(
+      ((vector['values'] as List?) ?? const [])
+          .map((item) => (item as num).toDouble())
+          .toList(),
+    );
+  }
+  if (_isFirestoreVectorValueJson(value)) {
+    final mapValue = Map<String, dynamic>.from(value['mapValue'] as Map);
+    final fields =
+        Map<String, dynamic>.from((mapValue['fields'] as Map?) ?? {});
+    return VectorValue(
+      ((((fields[_firestoreVectorValueKey] as Map?)?['arrayValue']
+                  as Map?)?['values'] as List?) ??
+              const [])
+          .map((item) => ((item as Map)['doubleValue'] as num).toDouble())
+          .toList(),
+    );
+  }
+  if (value['arrayValue'] != null) {
+    final array = Map<String, dynamic>.from(value['arrayValue'] as Map);
+    return ((array['values'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) =>
+            _decodeFirestoreRestValue(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+  if (value['mapValue'] != null) {
+    final mapValue = Map<String, dynamic>.from(value['mapValue'] as Map);
+    final fields = mapValue['fields'];
+    return fields is Map
+        ? Map<String, dynamic>.fromEntries(
+            fields.entries.map(
+              (entry) => MapEntry(
+                entry.key as String,
+                _decodeFirestoreRestValue(
+                  Map<String, dynamic>.from(entry.value as Map),
+                ),
+              ),
+            ),
+          )
+        : <String, dynamic>{};
+  }
+
+  throw Exception('Unsupported type: $value');
+}
+
+bool _isFirestoreVectorValueJson(Map<String, dynamic> value) {
+  final mapValue = value['mapValue'];
+  if (mapValue is! Map) {
+    return false;
+  }
+
+  final fields = mapValue['fields'];
+  if (fields is! Map) {
+    return false;
+  }
+
+  final typeField = fields[_firestoreVectorTypeKey];
+  return typeField is Map &&
+      typeField['stringValue'] == _firestoreVectorTypeSentinel;
 }

@@ -21,7 +21,8 @@ The shared package models a smaller common subset of Firestore so the same docum
 | Limit queries | ✅ | ✅ |
 | Order queries | ✅ | ✅ |
 | Recursive `VectorValue` read / write conversion | ✅ | ✅ |
-| Nearest-neighbor vector query `findNearest(...).get()` | ✅ | ✅ |
+| Nearest-neighbor vector query API surface | ✅ | ✅ |
+| Nearest-neighbor vector query execution in official adapters | ✅ | ✅ |
 | `CollectionReference.deleteAll()` | ✅ | ✅ |
 | Realtime document streams | ✅ | ❌ |
 | Realtime collection streams | ✅ | ❌ |
@@ -131,6 +132,18 @@ final under18Count = await users
     .count();
 ```
 
+### Listing IDs
+
+`listIds()` streams document IDs by paging through the current query in batches.
+
+```dart
+final ids = await FirestoreDatabase.instance
+    .collection("items")
+    .whereEqual("enabled", true)
+    .listIds(batchSize: 100)
+    .toList();
+```
+
 ### Vector Values
 
 `VectorValue` is the shared vector type for both adapters. Reads and writes convert recursively through nested maps and lists.
@@ -152,32 +165,28 @@ final embedding = doc.data!["embedding"] as VectorValue;
 
 ### Vector Search
 
-Vector search is explicit and get-only. It is not part of the normal realtime query chain.
+The shared package exposes `findNearest(...).get()` as a request/response-only vector search API.
 
 ```dart
-final results = await FirestoreDatabase.instance
+final docs = await FirestoreDatabase.instance
     .collection("items")
     .whereEqual("color", "red")
     .findNearest(
-      vectorField: "embedding_field",
-      queryVector: const VectorValue([3, 1, 2]),
+      vectorField: "embedding",
+      queryVector: const VectorValue([0.2, 0.4, 0.6]),
       limit: 5,
-      distanceMeasure: VectorDistanceMeasure.euclidean,
+      distanceMeasure: VectorDistanceMeasure.cosine,
       distanceResultField: "vector_distance",
-      distanceThreshold: 4.5,
+      distanceThreshold: 0.5,
     )
     .get();
-
-for (final doc in results) {
-  print(doc.id);
-  print(doc.data?["vector_distance"]);
-}
 ```
 
 Notes:
 
-- Use the `limit` parameter on `findNearest(...)` rather than calling `.limit(...)` before it.
-- Vector queries currently support `.get()` only, not realtime listeners.
+- vector queries are `get()` only and do not expose realtime streams
+- `fire_api_dart` executes vector queries through Firestore `StructuredQuery.findNearest`
+- `fire_api_flutter` executes vector queries through authenticated Firestore REST requests
 
 ### Collection Deletes
 

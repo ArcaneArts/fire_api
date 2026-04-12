@@ -1,3 +1,13 @@
+# 1.5.8
+* Stabilize Firestore nearest-neighbor vector queries through authenticated REST `StructuredQuery.findNearest`
+* Improve missing vector index failures with a copy-pasteable `gcloud` command
+
+# 1.5.7
+* Support recursive `VectorValue` conversion in both read and write paths
+* Support shared collection helpers such as `deleteAll(...)` and `listIds(...)`
+* Support nearest-neighbor vector query execution through Firestore REST `StructuredQuery.findNearest`
+* Authenticate vector queries with the current Firebase Auth ID token provider
+
 # 1.5.2
 * Support fire_api 1.5.2 and rootPrefix
 

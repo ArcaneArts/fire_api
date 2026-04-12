@@ -588,6 +588,42 @@ class CollectionReference extends FirestoreReference {
     return l;
   }
 
+  Stream<String> listIds({int batchSize = 100}) async* {
+    if (batchSize <= 0) {
+      throw ArgumentError.value(
+        batchSize,
+        'batchSize',
+        'CollectionReference.listIds batchSize must be greater than 0.',
+      );
+    }
+
+    var remaining = qLimit;
+    DocumentSnapshot? cursor;
+
+    while (remaining == null || remaining > 0) {
+      final currentBatchSize =
+          remaining == null ? batchSize : min(batchSize, remaining);
+      final batchQuery =
+          (cursor == null ? this : startAfter(cursor)).limit(currentBatchSize);
+      final documents = await batchQuery.get();
+
+      if (documents.isEmpty) {
+        return;
+      }
+
+      for (final document in documents) {
+        yield document.id;
+      }
+
+      remaining = remaining == null ? null : remaining - documents.length;
+      if (documents.length < currentBatchSize) {
+        return;
+      }
+
+      cursor = documents.last;
+    }
+  }
+
   Future<void> deleteAll({
     Set<String>? only,
     int batchSize = 100,

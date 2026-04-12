@@ -38,26 +38,23 @@ await FirestoreDatabase.instance.collection("items").doc("one").set({
 
 ### Vector search
 
-Vector queries are supported through the shared API:
+`findNearest(...).get()` is supported in this adapter.
+
+`fire_api_dart` translates `VectorValue` into Firestore's sentinel map representation and executes nearest-neighbor queries through `StructuredQuery.findNearest`.
 
 ```dart
 final docs = await FirestoreDatabase.instance
     .collection("items")
     .whereEqual("color", "red")
     .findNearest(
-      vectorField: "embedding_field",
-      queryVector: const VectorValue([3, 1, 2]),
+      vectorField: "embedding",
+      queryVector: const VectorValue([0.1, 0.2, 0.3]),
       limit: 5,
       distanceMeasure: VectorDistanceMeasure.euclidean,
       distanceResultField: "vector_distance",
     )
     .get();
 ```
-
-Important:
-
-- Vector queries require `GoogleCloudFirestoreDatabase.create()` or a constructor call that includes `client:`
-- The legacy two-argument constructor still works for non-vector reads and writes
 
 ### Shared collection deletes
 

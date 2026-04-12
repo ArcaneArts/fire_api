@@ -9,7 +9,7 @@ import 'package:test/test.dart';
 
 void main() {
   group('GoogleCloudFirestoreDatabase vector support', () {
-    test('getDocument decodes vector values recursively', () async {
+    test('getDocument decodes sentinel vector values recursively', () async {
       final client = MockClient((request) async {
         expect(request.method, 'GET');
         expect(
@@ -22,22 +22,14 @@ void main() {
             'name':
                 'projects/demo-project/databases/(default)/documents/users/alice',
             'fields': {
-              'embedding': {
-                'vectorValue': {
-                  'values': [1, 2.5],
-                },
-              },
+              'embedding': _vectorJson([1, 2.5]),
               'nested': {
                 'mapValue': {
                   'fields': {
                     'history': {
                       'arrayValue': {
                         'values': [
-                          {
-                            'vectorValue': {
-                              'values': [3, 4],
-                            },
-                          },
+                          _vectorJson([3, 4]),
                         ],
                       },
                     },
@@ -78,6 +70,38 @@ void main() {
       );
     });
 
+    test('getDocument decodes legacy vectorValue payloads recursively',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'name':
+                'projects/demo-project/databases/(default)/documents/users/alice',
+            'fields': {
+              'embedding': {
+                'vectorValue': {
+                  'values': [1, 2.5],
+                },
+              },
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final db = GoogleCloudFirestoreDatabase(
+        FirestoreApi(client),
+        'demo-project',
+        client: client,
+      );
+
+      final snapshot =
+          await db.getDocument(db.collection('users').doc('alice'));
+      expect(
+          (snapshot.data!['embedding'] as VectorValue).toArray(), [1.0, 2.5]);
+    });
+
     test('setDocument encodes nested vector values for commit writes',
         () async {
       late Map<String, dynamic> body;
@@ -113,11 +137,7 @@ void main() {
 
       final fields = (body['writes'] as List).single['update']['fields']
           as Map<String, dynamic>;
-      expect(fields['embedding'], {
-        'vectorValue': {
-          'values': [9.0, 8.0, 7.0],
-        },
-      });
+      expect(fields['embedding'], _vectorJson([9, 8, 7]));
       expect(
         (((fields['nested'] as Map<String, dynamic>)['mapValue']
                 as Map<String, dynamic>)['fields']
@@ -125,11 +145,7 @@ void main() {
         {
           'arrayValue': {
             'values': [
-              {
-                'vectorValue': {
-                  'values': [1.0, 2.0],
-                },
-              },
+              _vectorJson([1, 2]),
             ],
           },
         },
@@ -166,11 +182,7 @@ void main() {
       expect(transforms['fieldPath'], 'history');
       expect(transforms['appendMissingElements'], {
         'values': [
-          {
-            'vectorValue': {
-              'values': [4.0, 5.0],
-            },
-          },
+          _vectorJson([4, 5]),
         ],
       });
     });
@@ -196,11 +208,7 @@ void main() {
               'name':
                   'projects/demo-project/databases/(default)/documents/users/alice',
               'fields': {
-                'embedding': {
-                  'vectorValue': {
-                    'values': [1, 2],
-                  },
-                },
+                'embedding': _vectorJson([1, 2]),
               },
             }),
             200,
@@ -236,16 +244,11 @@ void main() {
 
       final updateFields = ((commitBody['writes'] as List).single['update']
           as Map<String, dynamic>)['fields'] as Map<String, dynamic>;
-      expect(updateFields['embedding'], {
-        'vectorValue': {
-          'values': [3.0, 4.0],
-        },
-      });
+      expect(updateFields['embedding'], _vectorJson([3, 4]));
       expect(commitBody['transaction'], 'txn-123');
     });
 
-    test('findNearest executes runQuery with vector search config', () async {
-      late Map<String, dynamic> body;
+    test('findNearest encodes structuredQuery.findNearest', () async {
       final client = MockClient((request) async {
         expect(request.method, 'POST');
         expect(
@@ -253,7 +256,30 @@ void main() {
           'https://firestore.googleapis.com/v1/projects/demo-project/databases/(default)/documents:runQuery',
         );
 
-        body = jsonDecode(request.body) as Map<String, dynamic>;
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        final query = body['structuredQuery'] as Map<String, dynamic>;
+        expect(
+          query['where'],
+          {
+            'fieldFilter': {
+              'field': {'fieldPath': 'color'},
+              'op': 'EQUAL',
+              'value': {'stringValue': 'red'},
+            },
+          },
+        );
+        expect(
+          query['findNearest'],
+          {
+            'vectorField': {'fieldPath': 'embedding_field'},
+            'queryVector': _vectorJson([3, 1, 2]),
+            'limit': 5,
+            'distanceMeasure': 'EUCLIDEAN',
+            'distanceResultField': 'vector_distance',
+            'distanceThreshold': 4.5,
+          },
+        );
+
         return http.Response(
           jsonEncode([
             {
@@ -261,12 +287,8 @@ void main() {
                 'name':
                     'projects/demo-project/databases/(default)/documents/items/item-1',
                 'fields': {
-                  'color': {
-                    'stringValue': 'red',
-                  },
-                  'vector_distance': {
-                    'doubleValue': 0.42,
-                  },
+                  'color': {'stringValue': 'red'},
+                  'vector_distance': {'doubleValue': 0.25},
                 },
               },
             },
@@ -295,35 +317,74 @@ void main() {
           )
           .get();
 
-      final structuredQuery = body['structuredQuery'] as Map<String, dynamic>;
-      expect(structuredQuery['where'], {
-        'fieldFilter': {
-          'field': {'fieldPath': 'color'},
-          'op': 'EQUAL',
-          'value': {
-            'stringValue': 'red',
-          },
-        },
-      });
-      expect(structuredQuery['findNearest'], {
-        'vectorField': {
-          'fieldPath': 'embedding_field',
-        },
-        'queryVector': {
-          'vectorValue': {
-            'values': [3.0, 1.0, 2.0],
-          },
-        },
-        'limit': 5,
-        'distanceMeasure': 'EUCLIDEAN',
-        'distanceResultField': 'vector_distance',
-        'distanceThreshold': 4.5,
-      });
-
       expect(results, hasLength(1));
       expect(results.single.id, 'item-1');
-      expect(results.single.data!['color'], 'red');
-      expect(results.single.data!['vector_distance'], 0.42);
+      expect(results.single.data!['vector_distance'], 0.25);
+    });
+
+    test('findNearest surfaces a clean vector index create command', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode([
+            {
+              'error': {
+                'code': 400,
+                'message':
+                    'Missing vector index configuration. Please create the required index with the following gcloud command: gcloud firestore indexes composite create --project=demo-project --collection-group=vectors --query-scope=COLLECTION --field-config=vector-config=\'{\\"dimension\\":\\"768\\",\\"flat\\": \\"{}\\"}\',field-path=vector',
+                'status': 'FAILED_PRECONDITION',
+              },
+            },
+          ]),
+          400,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final db = GoogleCloudFirestoreDatabase(
+        FirestoreApi(client),
+        'demo-project',
+        client: client,
+      );
+
+      try {
+        await db
+            .collection('vectors')
+            .findNearest(
+              vectorField: 'vector',
+              queryVector: VectorValue(List<double>.filled(768, 0.0)),
+              limit: 5,
+              distanceMeasure: VectorDistanceMeasure.cosine,
+            )
+            .get();
+        fail('Expected get() to throw');
+      } catch (error) {
+        final message = error.toString();
+        expect(
+          message,
+          contains(
+            '--field-config=\'field-path=vector,vector-config={"dimension":768,"flat":{}}\'',
+          ),
+        );
+        expect(message, contains('Create it with:'));
+      }
     });
   });
 }
+
+Map<String, dynamic> _vectorJson(List<num> values) => {
+      'mapValue': {
+        'fields': {
+          '__type__': {'stringValue': '__vector__'},
+          'value': {
+            'arrayValue': {
+              'values': [
+                for (final value in values)
+                  {
+                    'doubleValue': value.toDouble(),
+                  },
+              ],
+            },
+          },
+        },
+      },
+    };

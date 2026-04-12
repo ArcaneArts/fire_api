@@ -1,3 +1,14 @@
+# 1.5.8
+* Stabilize nearest-neighbor vector query support across the shared API and official adapters
+* Improve missing vector index errors with a clean `gcloud firestore indexes composite create` command
+
+# 1.5.7
+* Add `CollectionReference.deleteAll(...)` with batched deletes and optional `only:` filtering
+* Add `CollectionReference.listIds(...)` for batched ID streaming
+* Add shared `findNearest(...).get()` API surface for nearest-neighbor vector search
+* Recursively convert `VectorValue` inside nested maps and lists
+* Restore vector query execution in the official Dart and Flutter adapters
+
 # 1.5.4
 * Support vector values
 

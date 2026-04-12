@@ -359,30 +359,57 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
   @override
   Future<List<DocumentSnapshot>> getNearestDocumentsInCollection(
       VectorQueryReference reference) async {
-    if (client == null) {
-      throw StateError(
-          'Vector queries require GoogleCloudFirestoreDatabase.create() or a constructor call with client:.');
+    try {
+      if (client == null) {
+        return _documents
+            .runQuery(
+                RunQueryRequest(
+                  structuredQuery: reference.toQuery,
+                ),
+                reference.reference.path.contains("/")
+                    ? "$_dx/${reference.reference.parent.path}/"
+                    : _dx)
+            .then((r) => r
+                .where((i) => i.document != null && i.document!.exists)
+                .map((i) => DocumentSnapshot(
+                    reference.reference.doc(i.document!.name!.split("/").last),
+                    i.document!.data,
+                    metadata: i.document!))
+                .toList());
+      }
+
+      final response = await _postFirestoreJson(
+        '${_queryParentPath(reference.reference)}:runQuery',
+        body: {
+          'structuredQuery': reference.toQueryJson,
+        },
+      );
+
+      return (response as List)
+          .whereType<Map>()
+          .map((entry) => Map<String, dynamic>.from(entry))
+          .where((entry) => entry['document'] is Map)
+          .map((entry) => Map<String, dynamic>.from(entry['document'] as Map))
+          .where(_documentExists)
+          .map((document) => _documentSnapshotFromJson(
+                reference.reference
+                    .doc((document['name'] as String).split('/').last),
+                document,
+              ))
+          .toList();
+    } catch (error) {
+      final indexHint = _tryBuildMissingVectorIndexErrorMessage(
+        error,
+        projectId: project,
+        databaseId: database,
+        reference: reference,
+      );
+      if (indexHint != null) {
+        throw StateError(indexHint);
+      }
+
+      rethrow;
     }
-
-    final response = await _postFirestoreJson(
-      '${_queryParentPath(reference.reference)}:runQuery',
-      body: {
-        'structuredQuery': reference.toQueryJson,
-      },
-    );
-
-    return (response as List)
-        .whereType<Map>()
-        .map((entry) => Map<String, dynamic>.from(entry))
-        .where((entry) => entry['document'] is Map)
-        .map((entry) => Map<String, dynamic>.from(entry['document'] as Map))
-        .where(_documentExists)
-        .map((document) => _documentSnapshotFromJson(
-              reference.reference
-                  .doc((document['name'] as String).split('/').last),
-              document,
-            ))
-        .toList();
   }
 
   @override
@@ -1155,15 +1182,23 @@ extension _XCollectionReference on CollectionReference {
 }
 
 extension _XVectorQueryReference on VectorQueryReference {
+  StructuredQuery get toQuery => reference.toQuery
+    ..findNearest = FindNearest(
+      vectorField: FieldReference(fieldPath: vectorField),
+      queryVector: _toValue(queryVector),
+      limit: limit,
+      distanceMeasure: distanceMeasure.firestoreValue,
+      distanceResultField: distanceResultField,
+      distanceThreshold: distanceThreshold,
+    );
+
   Map<String, dynamic> get toQueryJson => {
         ...reference.toQueryJson,
         'findNearest': {
-          'vectorField': {
-            'fieldPath': vectorField,
-          },
+          'vectorField': {'fieldPath': vectorField},
           'queryVector': _toFirestoreValueJson(queryVector),
           'limit': limit,
-          'distanceMeasure': distanceMeasure.apiName,
+          'distanceMeasure': distanceMeasure.firestoreValue,
           if (distanceResultField != null)
             'distanceResultField': distanceResultField,
           if (distanceThreshold != null) 'distanceThreshold': distanceThreshold,
@@ -1188,7 +1223,7 @@ extension _XFieldOp on ClauseOperator {
 }
 
 extension _XVectorDistanceMeasure on VectorDistanceMeasure {
-  String get apiName => switch (this) {
+  String get firestoreValue => switch (this) {
         VectorDistanceMeasure.euclidean => 'EUCLIDEAN',
         VectorDistanceMeasure.cosine => 'COSINE',
         VectorDistanceMeasure.dotProduct => 'DOT_PRODUCT',
@@ -1204,7 +1239,12 @@ dynamic _fromValue(Value v) {
   if (v.arrayValue != null) {
     return v.arrayValue?.values?.map(_fromValue).toList();
   }
-  if (v.mapValue != null) return v.mapValue?.fields?._toDynamicMap();
+  if (v.mapValue != null) {
+    if (_isTypedVectorValue(v)) {
+      return _decodeTypedVectorValue(v.mapValue!.fields!);
+    }
+    return v.mapValue?.fields?._toDynamicMap();
+  }
   throw Exception("Unsupported type: ${v.toJson()}");
 }
 
@@ -1212,6 +1252,7 @@ Value _toValue(dynamic v) {
   return v == null
       ? Value(nullValue: "NULL_VALUE")
       : switch (v) {
+          VectorValue _ => _toTypedVectorValue(v),
           String _ => Value(stringValue: v),
           int _ => Value(integerValue: v.toString()),
           double _ => Value(doubleValue: v),
@@ -1231,11 +1272,7 @@ Map<String, dynamic> _toFirestoreValueJson(dynamic value) {
   }
 
   return switch (value) {
-    VectorValue _ => {
-        'vectorValue': {
-          'values': value.toArray(),
-        },
-      },
+    VectorValue _ => _toFirestoreVectorValueJson(value),
     String _ => {'stringValue': value},
     int _ => {'integerValue': value.toString()},
     double _ => {'doubleValue': value},
@@ -1278,6 +1315,12 @@ dynamic _fromFirestoreValueJson(Map<String, dynamic> value) {
           .map((item) => (item as num).toDouble())
           .toList(),
     );
+  }
+  if (_isFirestoreVectorValueJson(value)) {
+    final mapValue = Map<String, dynamic>.from(value['mapValue'] as Map);
+    final fields =
+        Map<String, dynamic>.from((mapValue['fields'] as Map?) ?? {});
+    return _decodeFirestoreVectorFieldsJson(fields);
   }
   if (value['arrayValue'] != null) {
     final array = Map<String, dynamic>.from(value['arrayValue'] as Map);
@@ -1333,23 +1376,142 @@ bool _documentExists(Map<String, dynamic> document) =>
     document['fields'] != null;
 
 dynamic _documentMetadataFromJson(Map<String, dynamic> document) =>
-    _hasVectorValue(document) ? document : Document.fromJson(document);
+    _hasLegacyVectorValue(document) ? document : Document.fromJson(document);
 
-bool _hasVectorValue(dynamic value) {
+bool _hasLegacyVectorValue(dynamic value) {
   if (value is Map) {
     if (value.containsKey('vectorValue')) {
       return true;
     }
 
-    return value.values.any(_hasVectorValue);
+    return value.values.any(_hasLegacyVectorValue);
   }
 
   if (value is List) {
-    return value.any(_hasVectorValue);
+    return value.any(_hasLegacyVectorValue);
   }
 
   return false;
 }
+
+const String _firestoreVectorTypeKey = '__type__';
+const String _firestoreVectorTypeSentinel = '__vector__';
+const String _firestoreVectorValueKey = 'value';
+
+String? _tryBuildMissingVectorIndexErrorMessage(
+  Object error, {
+  required String projectId,
+  required String databaseId,
+  required VectorQueryReference reference,
+}) {
+  final raw = error.toString();
+  if (!raw.contains('Missing vector index configuration')) {
+    return null;
+  }
+
+  final collectionGroup = reference.reference.path.split('/').last;
+  final fieldConfig = _shellSingleQuote(
+    'field-path=${reference.vectorField},vector-config={"dimension":${reference.queryVector.toArray().length},"flat":{}}',
+  );
+
+  return [
+    'Firestore vector query failed: missing vector index for collection group "$collectionGroup" on field "${reference.vectorField}".',
+    '',
+    'Create it with:',
+    '',
+    'gcloud firestore indexes composite create \\',
+    '  --project=${_shellSingleQuote(projectId)} \\',
+    if (databaseId != '(default)')
+      '  --database=${_shellSingleQuote(databaseId)} \\',
+    '  --collection-group=${_shellSingleQuote(collectionGroup)} \\',
+    '  --query-scope=collection \\',
+    '  --field-config=$fieldConfig',
+    '',
+    'Original Firestore response:',
+    raw,
+  ].join('\n');
+}
+
+String _shellSingleQuote(String value) =>
+    "'${value.replaceAll("'", "'\"'\"'")}'";
+
+bool _isTypedVectorValue(Value value) {
+  final fields = value.mapValue?.fields;
+  return fields != null &&
+      fields[_firestoreVectorTypeKey]?.stringValue ==
+          _firestoreVectorTypeSentinel;
+}
+
+Value _toTypedVectorValue(VectorValue value) => Value(
+      mapValue: MapValue(
+        fields: {
+          _firestoreVectorTypeKey:
+              Value(stringValue: _firestoreVectorTypeSentinel),
+          _firestoreVectorValueKey: Value(
+            arrayValue: ArrayValue(
+              values: value
+                  .toArray()
+                  .map((item) => Value(doubleValue: item.toDouble()))
+                  .toList(),
+            ),
+          ),
+        },
+      ),
+    );
+
+VectorValue _decodeTypedVectorValue(Map<String, Value> fields) => VectorValue(
+      ((fields[_firestoreVectorValueKey]?.arrayValue?.values) ?? const [])
+          .map((item) => (_fromValue(item) as num?)?.toDouble() ?? 0.0)
+          .toList(),
+    );
+
+Map<String, dynamic> _toFirestoreVectorValueJson(VectorValue value) => {
+      'mapValue': {
+        'fields': {
+          _firestoreVectorTypeKey: {
+            'stringValue': _firestoreVectorTypeSentinel,
+          },
+          _firestoreVectorValueKey: {
+            'arrayValue': {
+              'values': value
+                  .toArray()
+                  .map((item) => {
+                        'doubleValue': item.toDouble(),
+                      })
+                  .toList(),
+            },
+          },
+        },
+      },
+    };
+
+bool _isFirestoreVectorValueJson(Map<String, dynamic> value) {
+  final mapValue = value['mapValue'];
+  if (mapValue is! Map) {
+    return false;
+  }
+
+  final fields = mapValue['fields'];
+  if (fields is! Map) {
+    return false;
+  }
+
+  final typeField = fields[_firestoreVectorTypeKey];
+  return typeField is Map &&
+      typeField['stringValue'] == _firestoreVectorTypeSentinel;
+}
+
+VectorValue _decodeFirestoreVectorFieldsJson(Map<String, dynamic> fields) =>
+    VectorValue(
+      (((fields[_firestoreVectorValueKey] as Map?)?['arrayValue']
+                  as Map?)?['values'] as List? ??
+              const [])
+          .map((item) =>
+              _fromFirestoreValueJson(Map<String, dynamic>.from(item as Map))
+                  as num)
+          .map((item) => item.toDouble())
+          .toList(),
+    );
 
 Map<String, Value> _buildTypedNestedFields(Map<String, dynamic> flatData) {
   final root = <String, Value>{};

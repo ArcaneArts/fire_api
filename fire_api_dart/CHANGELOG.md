@@ -1,3 +1,13 @@
+# 1.5.8
+* Stabilize Firestore vector query execution through `StructuredQuery.findNearest`
+* Improve missing vector index failures with a copy-pasteable `gcloud` command
+
+# 1.5.7
+* Support recursive `VectorValue` conversion in both read and write paths
+* Support shared collection helpers such as `deleteAll(...)` and `listIds(...)`
+* Support nearest-neighbor vector query execution through `StructuredQuery.findNearest`
+* Encode vectors using Firestore's sentinel map value shape on both reads and writes
+
 # 1.4.0
 * Support downloads
 
