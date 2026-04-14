@@ -597,21 +597,21 @@ class CollectionReference extends FirestoreReference {
       );
     }
 
-    var remaining = qLimit;
+    int? remaining = qLimit;
     DocumentSnapshot? cursor;
 
     while (remaining == null || remaining > 0) {
-      final currentBatchSize =
+      int currentBatchSize =
           remaining == null ? batchSize : min(batchSize, remaining);
-      final batchQuery =
+      CollectionReference batchQuery =
           (cursor == null ? this : startAfter(cursor)).limit(currentBatchSize);
-      final documents = await batchQuery.get();
+      List<DocumentSnapshot> documents = await batchQuery.get();
 
       if (documents.isEmpty) {
         return;
       }
 
-      for (final document in documents) {
+      for (DocumentSnapshot document in documents) {
         yield document.id;
       }
 
@@ -636,12 +636,12 @@ class CollectionReference extends FirestoreReference {
       );
     }
 
-    final remaining = await count();
+    int remaining = await count();
     if (remaining <= 0) {
       return;
     }
 
-    final pendingIds = only == null ? null : Set<String>.from(only);
+    Set<String>? pendingIds = only == null ? null : Set<String>.from(only);
     if (pendingIds != null && pendingIds.isEmpty) {
       return;
     }
@@ -758,7 +758,8 @@ class CollectionReference extends FirestoreReference {
       return;
     }
 
-    final documents = await limit(min(batchSize, remaining)).get();
+    List<DocumentSnapshot> documents =
+        await limit(min(batchSize, remaining)).get();
     if (documents.isEmpty) {
       return;
     }
@@ -779,14 +780,15 @@ class CollectionReference extends FirestoreReference {
       return;
     }
 
-    final batchIds = pendingIds.take(batchSize).toList();
+    List<String> batchIds = pendingIds.take(batchSize).toList();
     pendingIds.removeAll(batchIds);
 
-    final documents = await Future.wait(
+    List<DocumentSnapshot> documents = await Future.wait(
       batchIds.map((id) => doc(id).get()),
     );
 
-    final existingDocuments = documents.where((document) => document.exists);
+    Iterable<DocumentSnapshot> existingDocuments =
+        documents.where((document) => document.exists);
     await Future.wait(
       existingDocuments.map((document) => document.reference.delete()),
     );
@@ -807,15 +809,16 @@ class CollectionReference extends FirestoreReference {
       return;
     }
 
-    final batchQuery = (cursor == null ? this : startAfter(cursor))
-        .limit(min(batchSize, remaining));
-    final documents = await batchQuery.get();
+    CollectionReference batchQuery =
+        (cursor == null ? this : startAfter(cursor))
+            .limit(min(batchSize, remaining));
+    List<DocumentSnapshot> documents = await batchQuery.get();
     if (documents.isEmpty) {
       return;
     }
 
-    final matches = <DocumentSnapshot>[];
-    for (final document in documents) {
+    List<DocumentSnapshot> matches = <DocumentSnapshot>[];
+    for (DocumentSnapshot document in documents) {
       if (pendingIds.remove(document.id)) {
         matches.add(document);
       }
@@ -847,6 +850,9 @@ enum VectorDistanceMeasure {
 }
 
 class VectorQueryReference {
+  static const String implicitDistanceResultField =
+      '__fire_api_vector_query_distance__';
+
   final CollectionReference reference;
   final String vectorField;
   final VectorValue queryVector;
@@ -866,13 +872,21 @@ class VectorQueryReference {
   });
 
   FirestoreDatabase get db => reference.db;
+  String get resolvedDistanceResultField =>
+      distanceResultField ?? implicitDistanceResultField;
+  bool get usesImplicitDistanceResultField => distanceResultField == null;
 
-  Future<List<DocumentSnapshot>> get() async {
+  Future<List<VectorQueryDocumentSnapshot>> get() async {
     if (db.debugLogging) {
       network('Getting nearest-vector documents in $this');
     }
 
-    final results = await db.getNearestDocumentsInCollection(this);
+    List<DocumentSnapshot> documents =
+        await db.getNearestDocumentsInCollection(this);
+    List<VectorQueryDocumentSnapshot> results = [
+      for (int i = 0; i < documents.length; i++)
+        _toVectorQueryDocumentSnapshot(documents[i], rank: i + 1),
+    ];
 
     if (db.debugLogging) {
       network('Got ${results.length} nearest-vector documents');
@@ -881,9 +895,72 @@ class VectorQueryReference {
     return results;
   }
 
+  VectorQueryDocumentSnapshot _toVectorQueryDocumentSnapshot(
+    DocumentSnapshot document, {
+    required int rank,
+  }) {
+    double? score = document.vectorQueryScore(resolvedDistanceResultField);
+    DocumentSnapshot resultDocument = usesImplicitDistanceResultField
+        ? document.withoutTopLevelField(resolvedDistanceResultField)
+        : document;
+
+    return VectorQueryDocumentSnapshot(
+      document: resultDocument,
+      rank: rank,
+      score: score,
+      scoreField: distanceResultField,
+    );
+  }
+
   @override
   String toString() =>
       'vectorQuery(${reference.path}, vectorField=$vectorField, limit=$limit, distanceMeasure=$distanceMeasure${distanceResultField != null ? ", distanceResultField=$distanceResultField" : ""}${distanceThreshold != null ? ", distanceThreshold=$distanceThreshold" : ""})';
+}
+
+class VectorQueryDocumentSnapshot extends DocumentSnapshot {
+  final int rank;
+  final double? score;
+  final String? scoreField;
+
+  VectorQueryDocumentSnapshot({
+    required DocumentSnapshot document,
+    required this.rank,
+    required this.score,
+    this.scoreField,
+  }) : super(
+          document.reference,
+          document.data,
+          metadata: document.metadata,
+          changeType: document.changeType,
+        );
+}
+
+extension _XDocumentSnapshotVectorQuery on DocumentSnapshot {
+  double? vectorQueryScore(String field) {
+    DocumentData? currentData = data;
+    if (currentData == null) {
+      return null;
+    }
+
+    dynamic value = currentData[field];
+    return value is num ? value.toDouble() : null;
+  }
+
+  DocumentSnapshot withoutTopLevelField(String field) {
+    DocumentData? currentData = data;
+    if (currentData == null || !currentData.containsKey(field)) {
+      return this;
+    }
+
+    Map<String, dynamic> sanitized = Map<String, dynamic>.from(currentData)
+      ..remove(field);
+    return DocumentSnapshot(
+      reference,
+      sanitized,
+      metadata: metadata,
+      changeType: changeType,
+    );
+  }
 }
 
 class DocumentReference extends FirestoreReference {

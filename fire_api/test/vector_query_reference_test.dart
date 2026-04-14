@@ -3,11 +3,12 @@ import 'package:test/test.dart';
 
 void main() {
   group('VectorQueryReference', () {
-    test('findNearest returns a get-only vector query wrapper', () async {
-      final db = _FakeFirestoreDatabase();
-      final reference = db.collection('items').whereEqual('color', 'red');
+    test('findNearest returns ranked vector query snapshots', () async {
+      _FakeFirestoreDatabase db = _FakeFirestoreDatabase();
+      CollectionReference reference =
+          db.collection('items').whereEqual('color', 'red');
 
-      final results = await reference
+      List<VectorQueryDocumentSnapshot> results = await reference
           .findNearest(
             vectorField: 'embedding_field',
             queryVector: const VectorValue([1, 2, 3]),
@@ -25,11 +26,42 @@ void main() {
           db.lastVectorQuery!.distanceMeasure, VectorDistanceMeasure.euclidean);
       expect(db.lastVectorQuery!.distanceResultField, 'vector_distance');
       expect(results, hasLength(1));
+      expect(results.single, isA<VectorQueryDocumentSnapshot>());
       expect(results.single.id, 'item-1');
+      expect(results.single.rank, 1);
+      expect(results.single.score, 0.25);
+      expect(results.single.scoreField, 'vector_distance');
+      expect(results.single.data!['vector_distance'], 0.25);
+    });
+
+    test('findNearest captures score without exposing the implicit score field',
+        () async {
+      _FakeFirestoreDatabase db = _FakeFirestoreDatabase();
+
+      List<VectorQueryDocumentSnapshot> results = await db
+          .collection('items')
+          .findNearest(
+            vectorField: 'embedding_field',
+            queryVector: const VectorValue([1, 2, 3]),
+            limit: 3,
+            distanceMeasure: VectorDistanceMeasure.euclidean,
+          )
+          .get();
+
+      expect(results, hasLength(1));
+      expect(results.single.rank, 1);
+      expect(results.single.score, 0.25);
+      expect(results.single.scoreField, isNull);
+      expect(
+        results.single.data!.containsKey(
+          VectorQueryReference.implicitDistanceResultField,
+        ),
+        isFalse,
+      );
     });
 
     test('findNearest rejects CollectionReference.limit', () {
-      final db = _FakeFirestoreDatabase();
+      _FakeFirestoreDatabase db = _FakeFirestoreDatabase();
 
       expect(
         () => db.collection('items').limit(10).findNearest(
@@ -75,7 +107,9 @@ class _FakeFirestoreDatabase extends FirestoreDatabase {
     return Future.value([
       DocumentSnapshot(
         reference.reference.doc('item-1'),
-        {'vector_distance': 0.25},
+        {
+          reference.resolvedDistanceResultField: 0.25,
+        },
       ),
     ]);
   }

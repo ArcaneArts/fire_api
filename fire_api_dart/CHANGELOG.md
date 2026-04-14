@@ -1,3 +1,12 @@
+# 1.6.0
+* Support ranked vector query results with automatic score capture from Firestore nearest-neighbor queries
+* Keep implicit vector score fields out of returned document data while exposing them through the shared API
+* Ship the stable Firestore server adapter for the 1.6 release line
+
+# 1.5.9
+* Fix server-side vector query error handling so missing index failures are caught and rewritten correctly
+* Emit a single-line copy-pasteable `gcloud firestore indexes composite create` command for missing vector indexes
+
 # 1.5.8
 * Stabilize Firestore vector query execution through `StructuredQuery.findNearest`
 * Improve missing vector index failures with a copy-pasteable `gcloud` command

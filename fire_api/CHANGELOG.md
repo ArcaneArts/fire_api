@@ -1,3 +1,12 @@
+# 1.6.0
+* Add ranked vector query results with `VectorQueryDocumentSnapshot.rank` and `.score`
+* Automatically request and capture vector distance scores without leaking implicit score fields into returned document data
+* Finalize the shared vector query surface and collection helpers for the 1.6 release line
+
+# 1.5.9
+* Tighten nearest-neighbor vector query support for the official Dart adapter release
+* Improve server-side vector query failure messaging for missing Firestore vector indexes
+
 # 1.5.8
 * Stabilize nearest-neighbor vector query support across the shared API and official adapters
 * Improve missing vector index errors with a clean `gcloud firestore indexes composite create` command

@@ -10,7 +10,7 @@ import 'package:test/test.dart';
 void main() {
   group('GoogleCloudFirestoreDatabase vector support', () {
     test('getDocument decodes sentinel vector values recursively', () async {
-      final client = MockClient((request) async {
+      MockClient client = MockClient((request) async {
         expect(request.method, 'GET');
         expect(
           request.url.toString(),
@@ -43,13 +43,13 @@ void main() {
         );
       });
 
-      final db = GoogleCloudFirestoreDatabase(
+      GoogleCloudFirestoreDatabase db = GoogleCloudFirestoreDatabase(
         FirestoreApi(client),
         'demo-project',
         client: client,
       );
-      final ref = db.collection('users').doc('alice');
-      final snapshot = await db.getDocument(ref);
+      DocumentReference ref = db.collection('users').doc('alice');
+      DocumentSnapshot snapshot = await db.getDocument(ref);
 
       expect(snapshot.exists, isTrue);
       expect(
@@ -72,7 +72,7 @@ void main() {
 
     test('getDocument decodes legacy vectorValue payloads recursively',
         () async {
-      final client = MockClient((request) async {
+      MockClient client = MockClient((request) async {
         return http.Response(
           jsonEncode({
             'name':
@@ -90,13 +90,13 @@ void main() {
         );
       });
 
-      final db = GoogleCloudFirestoreDatabase(
+      GoogleCloudFirestoreDatabase db = GoogleCloudFirestoreDatabase(
         FirestoreApi(client),
         'demo-project',
         client: client,
       );
 
-      final snapshot =
+      DocumentSnapshot snapshot =
           await db.getDocument(db.collection('users').doc('alice'));
       expect(
           (snapshot.data!['embedding'] as VectorValue).toArray(), [1.0, 2.5]);
@@ -105,7 +105,7 @@ void main() {
     test('setDocument encodes nested vector values for commit writes',
         () async {
       late Map<String, dynamic> body;
-      final client = MockClient((request) async {
+      MockClient client = MockClient((request) async {
         expect(request.method, 'POST');
         expect(
           request.url.toString(),
@@ -120,7 +120,7 @@ void main() {
         );
       });
 
-      final db = GoogleCloudFirestoreDatabase(
+      GoogleCloudFirestoreDatabase db = GoogleCloudFirestoreDatabase(
         FirestoreApi(client),
         'demo-project',
         client: client,
@@ -135,8 +135,8 @@ void main() {
         },
       });
 
-      final fields = (body['writes'] as List).single['update']['fields']
-          as Map<String, dynamic>;
+      Map<String, dynamic> fields = (body['writes'] as List).single['update']
+          ['fields'] as Map<String, dynamic>;
       expect(fields['embedding'], _vectorJson([9, 8, 7]));
       expect(
         (((fields['nested'] as Map<String, dynamic>)['mapValue']
@@ -155,7 +155,7 @@ void main() {
     test('updateDocument encodes vector values inside array transforms',
         () async {
       late Map<String, dynamic> body;
-      final client = MockClient((request) async {
+      MockClient client = MockClient((request) async {
         body = jsonDecode(request.body) as Map<String, dynamic>;
         return http.Response(
           '{}',
@@ -164,7 +164,7 @@ void main() {
         );
       });
 
-      final db = GoogleCloudFirestoreDatabase(
+      GoogleCloudFirestoreDatabase db = GoogleCloudFirestoreDatabase(
         FirestoreApi(client),
         'demo-project',
         client: client,
@@ -176,8 +176,8 @@ void main() {
         ]),
       });
 
-      final writes = body['writes'] as List;
-      final transforms =
+      List writes = body['writes'] as List;
+      Map<String, dynamic> transforms =
           (writes.single['transform']['fieldTransforms'] as List).single;
       expect(transforms['fieldPath'], 'history');
       expect(transforms['appendMissingElements'], {
@@ -189,8 +189,8 @@ void main() {
 
     test('updateDocumentAtomic decodes vectors before txn callback', () async {
       late Map<String, dynamic> commitBody;
-      final client = MockClient((request) async {
-        final path = request.url.path;
+      MockClient client = MockClient((request) async {
+        String path = request.url.path;
 
         if (path.endsWith('documents:beginTransaction')) {
           return http.Response(
@@ -228,7 +228,7 @@ void main() {
         fail('Unexpected request: ${request.method} ${request.url}');
       });
 
-      final db = GoogleCloudFirestoreDatabase(
+      GoogleCloudFirestoreDatabase db = GoogleCloudFirestoreDatabase(
         FirestoreApi(client),
         'demo-project',
         client: client,
@@ -242,22 +242,25 @@ void main() {
         };
       });
 
-      final updateFields = ((commitBody['writes'] as List).single['update']
-          as Map<String, dynamic>)['fields'] as Map<String, dynamic>;
+      Map<String, dynamic> updateFields =
+          ((commitBody['writes'] as List).single['update']
+              as Map<String, dynamic>)['fields'] as Map<String, dynamic>;
       expect(updateFields['embedding'], _vectorJson([3, 4]));
       expect(commitBody['transaction'], 'txn-123');
     });
 
     test('findNearest encodes structuredQuery.findNearest', () async {
-      final client = MockClient((request) async {
+      MockClient client = MockClient((request) async {
         expect(request.method, 'POST');
         expect(
           request.url.toString(),
           'https://firestore.googleapis.com/v1/projects/demo-project/databases/(default)/documents:runQuery',
         );
 
-        final body = jsonDecode(request.body) as Map<String, dynamic>;
-        final query = body['structuredQuery'] as Map<String, dynamic>;
+        Map<String, dynamic> body =
+            jsonDecode(request.body) as Map<String, dynamic>;
+        Map<String, dynamic> query =
+            body['structuredQuery'] as Map<String, dynamic>;
         expect(
           query['where'],
           {
@@ -298,13 +301,13 @@ void main() {
         );
       });
 
-      final db = GoogleCloudFirestoreDatabase(
+      GoogleCloudFirestoreDatabase db = GoogleCloudFirestoreDatabase(
         FirestoreApi(client),
         'demo-project',
         client: client,
       );
 
-      final results = await db
+      List<VectorQueryDocumentSnapshot> results = await db
           .collection('items')
           .whereEqual('color', 'red')
           .findNearest(
@@ -322,8 +325,64 @@ void main() {
       expect(results.single.data!['vector_distance'], 0.25);
     });
 
+    test('findNearest injects an implicit distance result field', () async {
+      MockClient client = MockClient((request) async {
+        Map<String, dynamic> body =
+            jsonDecode(request.body) as Map<String, dynamic>;
+        Map<String, dynamic> query =
+            body['structuredQuery'] as Map<String, dynamic>;
+        expect(
+          (query['findNearest'] as Map<String, dynamic>)['distanceResultField'],
+          VectorQueryReference.implicitDistanceResultField,
+        );
+
+        return http.Response(
+          jsonEncode([
+            {
+              'document': {
+                'name':
+                    'projects/demo-project/databases/(default)/documents/items/item-1',
+                'fields': {
+                  VectorQueryReference.implicitDistanceResultField: {
+                    'doubleValue': 0.25,
+                  },
+                },
+              },
+            },
+          ]),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      GoogleCloudFirestoreDatabase db = GoogleCloudFirestoreDatabase(
+        FirestoreApi(client),
+        'demo-project',
+        client: client,
+      );
+
+      List<VectorQueryDocumentSnapshot> results = await db
+          .collection('items')
+          .findNearest(
+            vectorField: 'embedding_field',
+            queryVector: const VectorValue([3, 1, 2]),
+            limit: 5,
+            distanceMeasure: VectorDistanceMeasure.euclidean,
+          )
+          .get();
+
+      expect(results, hasLength(1));
+      expect(results.single.score, 0.25);
+      expect(
+        results.single.data!.containsKey(
+          VectorQueryReference.implicitDistanceResultField,
+        ),
+        isFalse,
+      );
+    });
+
     test('findNearest surfaces a clean vector index create command', () async {
-      final client = MockClient((request) async {
+      MockClient client = MockClient((request) async {
         return http.Response(
           jsonEncode([
             {
@@ -340,7 +399,7 @@ void main() {
         );
       });
 
-      final db = GoogleCloudFirestoreDatabase(
+      GoogleCloudFirestoreDatabase db = GoogleCloudFirestoreDatabase(
         FirestoreApi(client),
         'demo-project',
         client: client,
@@ -358,14 +417,19 @@ void main() {
             .get();
         fail('Expected get() to throw');
       } catch (error) {
-        final message = error.toString();
+        String message = error.toString();
         expect(
           message,
           contains(
             '--field-config=\'field-path=vector,vector-config={"dimension":768,"flat":{}}\'',
           ),
         );
-        expect(message, contains('Create it with:'));
+        expect(
+          message,
+          contains(
+            'Create it with: gcloud firestore indexes composite create --project=\'demo-project\' --collection-group=\'vectors\' --query-scope=collection',
+          ),
+        );
       }
     });
   });

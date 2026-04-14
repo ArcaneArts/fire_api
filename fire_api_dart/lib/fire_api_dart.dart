@@ -361,24 +361,25 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
       VectorQueryReference reference) async {
     try {
       if (client == null) {
-        return _documents
-            .runQuery(
-                RunQueryRequest(
-                  structuredQuery: reference.toQuery,
-                ),
-                reference.reference.path.contains("/")
-                    ? "$_dx/${reference.reference.parent.path}/"
-                    : _dx)
-            .then((r) => r
-                .where((i) => i.document != null && i.document!.exists)
-                .map((i) => DocumentSnapshot(
-                    reference.reference.doc(i.document!.name!.split("/").last),
-                    i.document!.data,
-                    metadata: i.document!))
-                .toList());
+        List<RunQueryResponseElement> results = await _documents.runQuery(
+          RunQueryRequest(
+            structuredQuery: reference.toQuery,
+          ),
+          reference.reference.path.contains("/")
+              ? "$_dx/${reference.reference.parent.path}/"
+              : _dx,
+        );
+
+        return results
+            .where((i) => i.document != null && i.document!.exists)
+            .map((i) => DocumentSnapshot(
+                reference.reference.doc(i.document!.name!.split("/").last),
+                i.document!.data,
+                metadata: i.document!))
+            .toList();
       }
 
-      final response = await _postFirestoreJson(
+      dynamic response = await _postFirestoreJson(
         '${_queryParentPath(reference.reference)}:runQuery',
         body: {
           'structuredQuery': reference.toQueryJson,
@@ -398,8 +399,7 @@ class GoogleCloudFirestoreDatabase extends FirestoreDatabase {
               ))
           .toList();
     } catch (error) {
-      final indexHint = _tryBuildMissingVectorIndexErrorMessage(
-        error,
+      String? indexHint = error.missingVectorIndexErrorMessage(
         projectId: project,
         databaseId: database,
         reference: reference,
@@ -1188,7 +1188,7 @@ extension _XVectorQueryReference on VectorQueryReference {
       queryVector: _toValue(queryVector),
       limit: limit,
       distanceMeasure: distanceMeasure.firestoreValue,
-      distanceResultField: distanceResultField,
+      distanceResultField: resolvedDistanceResultField,
       distanceThreshold: distanceThreshold,
     );
 
@@ -1199,8 +1199,7 @@ extension _XVectorQueryReference on VectorQueryReference {
           'queryVector': _toFirestoreValueJson(queryVector),
           'limit': limit,
           'distanceMeasure': distanceMeasure.firestoreValue,
-          if (distanceResultField != null)
-            'distanceResultField': distanceResultField,
+          'distanceResultField': resolvedDistanceResultField,
           if (distanceThreshold != null) 'distanceThreshold': distanceThreshold,
         },
       };
@@ -1398,42 +1397,61 @@ const String _firestoreVectorTypeKey = '__type__';
 const String _firestoreVectorTypeSentinel = '__vector__';
 const String _firestoreVectorValueKey = 'value';
 
-String? _tryBuildMissingVectorIndexErrorMessage(
-  Object error, {
-  required String projectId,
-  required String databaseId,
-  required VectorQueryReference reference,
-}) {
-  final raw = error.toString();
-  if (!raw.contains('Missing vector index configuration')) {
-    return null;
+extension _XObjectVectorQueryFailure on Object {
+  String? missingVectorIndexErrorMessage({
+    required String projectId,
+    required String databaseId,
+    required VectorQueryReference reference,
+  }) {
+    String? firestoreMessage = firestoreErrorMessage;
+    if (firestoreMessage == null ||
+        !firestoreMessage.contains('Missing vector index configuration')) {
+      return null;
+    }
+
+    String raw = toString();
+    String collectionGroup = reference.reference.path.split('/').last;
+    String fieldConfig =
+        'field-path=${reference.vectorField},vector-config={"dimension":${reference.queryVector.toArray().length},"flat":{}}'
+            .shellSingleQuoted;
+    String command = [
+      'gcloud firestore indexes composite create',
+      '--project=${projectId.shellSingleQuoted}',
+      if (databaseId != '(default)')
+        '--database=${databaseId.shellSingleQuoted}',
+      '--collection-group=${collectionGroup.shellSingleQuoted}',
+      '--query-scope=collection',
+      '--field-config=$fieldConfig',
+    ].join(' ');
+
+    return [
+      'Firestore vector query failed: missing vector index for collection group "$collectionGroup" on field "${reference.vectorField}".',
+      '',
+      'Create it with: $command',
+      '',
+      'Original Firestore response:',
+      raw,
+    ].join('\n');
   }
 
-  final collectionGroup = reference.reference.path.split('/').last;
-  final fieldConfig = _shellSingleQuote(
-    'field-path=${reference.vectorField},vector-config={"dimension":${reference.queryVector.toArray().length},"flat":{}}',
-  );
+  String? get firestoreErrorMessage {
+    if (this is! DetailedApiRequestError) {
+      return toString();
+    }
 
-  return [
-    'Firestore vector query failed: missing vector index for collection group "$collectionGroup" on field "${reference.vectorField}".',
-    '',
-    'Create it with:',
-    '',
-    'gcloud firestore indexes composite create \\',
-    '  --project=${_shellSingleQuote(projectId)} \\',
-    if (databaseId != '(default)')
-      '  --database=${_shellSingleQuote(databaseId)} \\',
-    '  --collection-group=${_shellSingleQuote(collectionGroup)} \\',
-    '  --query-scope=collection \\',
-    '  --field-config=$fieldConfig',
-    '',
-    'Original Firestore response:',
-    raw,
-  ].join('\n');
+    DetailedApiRequestError error = this as DetailedApiRequestError;
+    dynamic jsonMessage = error.jsonResponse?['error'];
+    if (jsonMessage is Map && jsonMessage['message'] is String) {
+      return jsonMessage['message'] as String;
+    }
+
+    return error.message;
+  }
 }
 
-String _shellSingleQuote(String value) =>
-    "'${value.replaceAll("'", "'\"'\"'")}'";
+extension _XStringShellQuote on String {
+  String get shellSingleQuoted => "'${replaceAll("'", "'\"'\"'")}'";
+}
 
 bool _isTypedVectorValue(Value value) {
   final fields = value.mapValue?.fields;

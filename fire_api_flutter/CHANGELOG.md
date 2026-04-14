@@ -1,3 +1,8 @@
+# 1.6.0
+* Support ranked vector query results with automatic score capture from Firestore nearest-neighbor queries
+* Keep implicit vector score fields out of returned document data while exposing them through the shared API
+* Ship the stable Flutter vector query adapter for the 1.6 release line
+
 # 1.5.8
 * Stabilize Firestore nearest-neighbor vector queries through authenticated REST `StructuredQuery.findNearest`
 * Improve missing vector index failures with a copy-pasteable `gcloud` command

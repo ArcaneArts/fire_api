@@ -296,7 +296,7 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
   Future<List<DocumentSnapshot>> getNearestDocumentsInCollection(
       VectorQueryReference reference) async {
     try {
-      final response = await _postFirestoreJson(
+      dynamic response = await _postFirestoreJson(
         '${_queryParentPath(reference.reference)}:runQuery',
         body: {
           'structuredQuery': reference.toQueryJson,
@@ -317,8 +317,7 @@ class FirebaseFirestoreDatabase extends FirestoreDatabase {
               ))
           .toList();
     } catch (error) {
-      final indexHint = _tryBuildMissingVectorIndexErrorMessage(
-        error,
+      String? indexHint = error.missingVectorIndexErrorMessage(
         projectId: _projectId,
         databaseId: databaseId,
         reference: reference,
@@ -584,8 +583,7 @@ extension _XRestVectorQueryReference on VectorQueryReference {
           'queryVector': _encodeFirestoreRestValue(queryVector),
           'limit': limit,
           'distanceMeasure': distanceMeasure.firestoreValue,
-          if (distanceResultField != null)
-            'distanceResultField': distanceResultField,
+          'distanceResultField': resolvedDistanceResultField,
           if (distanceThreshold != null) 'distanceThreshold': distanceThreshold,
         },
       };
@@ -626,42 +624,45 @@ const String _firestoreVectorTypeKey = '__type__';
 const String _firestoreVectorTypeSentinel = '__vector__';
 const String _firestoreVectorValueKey = 'value';
 
-String? _tryBuildMissingVectorIndexErrorMessage(
-  Object error, {
-  required String projectId,
-  required String databaseId,
-  required VectorQueryReference reference,
-}) {
-  final raw = error.toString();
-  if (!raw.contains('Missing vector index configuration')) {
-    return null;
+extension _XObjectVectorQueryFailure on Object {
+  String? missingVectorIndexErrorMessage({
+    required String projectId,
+    required String databaseId,
+    required VectorQueryReference reference,
+  }) {
+    String raw = toString();
+    if (!raw.contains('Missing vector index configuration')) {
+      return null;
+    }
+
+    String collectionGroup = reference.reference.path.split('/').last;
+    String fieldConfig =
+        'field-path=${reference.vectorField},vector-config={"dimension":${reference.queryVector.toArray().length},"flat":{}}'
+            .shellSingleQuoted;
+    String command = [
+      'gcloud firestore indexes composite create',
+      '--project=${projectId.shellSingleQuoted}',
+      if (databaseId != '(default)')
+        '--database=${databaseId.shellSingleQuoted}',
+      '--collection-group=${collectionGroup.shellSingleQuoted}',
+      '--query-scope=collection',
+      '--field-config=$fieldConfig',
+    ].join(' ');
+
+    return [
+      'Firestore vector query failed: missing vector index for collection group "$collectionGroup" on field "${reference.vectorField}".',
+      '',
+      'Create it with: $command',
+      '',
+      'Original Firestore response:',
+      raw,
+    ].join('\n');
   }
-
-  final collectionGroup = reference.reference.path.split('/').last;
-  final fieldConfig = _shellSingleQuote(
-    'field-path=${reference.vectorField},vector-config={"dimension":${reference.queryVector.toArray().length},"flat":{}}',
-  );
-
-  return [
-    'Firestore vector query failed: missing vector index for collection group "$collectionGroup" on field "${reference.vectorField}".',
-    '',
-    'Create it with:',
-    '',
-    'gcloud firestore indexes composite create \\',
-    '  --project=${_shellSingleQuote(projectId)} \\',
-    if (databaseId != '(default)')
-      '  --database=${_shellSingleQuote(databaseId)} \\',
-    '  --collection-group=${_shellSingleQuote(collectionGroup)} \\',
-    '  --query-scope=collection \\',
-    '  --field-config=$fieldConfig',
-    '',
-    'Original Firestore response:',
-    raw,
-  ].join('\n');
 }
 
-String _shellSingleQuote(String value) =>
-    "'${value.replaceAll("'", "'\"'\"'")}'";
+extension _XStringShellQuote on String {
+  String get shellSingleQuoted => "'${replaceAll("'", "'\"'\"'")}'";
+}
 
 Map<String, dynamic> _encodeFirestoreRestValue(dynamic value) {
   if (value == null) {
