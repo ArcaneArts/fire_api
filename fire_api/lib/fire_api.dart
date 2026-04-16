@@ -2,8 +2,11 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:artifact/artifact.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:rxdart/rxdart.dart';
+
+export 'package:fire_api/gen/artifacts.gen.dart' show $VectorValue;
 
 class ReusableStream<T> {
   final bool _debug;
@@ -851,7 +854,7 @@ enum VectorDistanceMeasure {
 
 class VectorQueryReference {
   static const String implicitDistanceResultField =
-      '__fire_api_vector_query_distance__';
+      'fire_api_vector_query_distance';
 
   final CollectionReference reference;
   final String vectorField;
@@ -915,6 +918,42 @@ class VectorQueryReference {
   @override
   String toString() =>
       'vectorQuery(${reference.path}, vectorField=$vectorField, limit=$limit, distanceMeasure=$distanceMeasure${distanceResultField != null ? ", distanceResultField=$distanceResultField" : ""}${distanceThreshold != null ? ", distanceThreshold=$distanceThreshold" : ""})';
+}
+
+String vectorIndexFieldConfigForClause(Clause clause) => switch (
+      clause.operator
+    ) {
+      ClauseOperator.arrayContains ||
+      ClauseOperator.arrayContainsAny =>
+        'array-config=CONTAINS,field-path=${clause.field}',
+      _ => 'order=ASCENDING,field-path=${clause.field}',
+    };
+
+List<String> buildVectorIndexFieldConfigs(VectorQueryReference reference) {
+  Set<String> seen = <String>{};
+  List<String> configs = <String>[];
+
+  void add(String config) {
+    if (seen.add(config)) {
+      configs.add(config);
+    }
+  }
+
+  for (Clause clause in reference.reference.clauses) {
+    add(vectorIndexFieldConfigForClause(clause));
+  }
+
+  if (reference.reference.qOrderBy != null) {
+    add(
+      'order=${reference.reference.descending ? "DESCENDING" : "ASCENDING"},field-path=${reference.reference.qOrderBy}',
+    );
+  }
+
+  add(
+    'field-path=${reference.vectorField},vector-config={"dimension":${reference.queryVector.toArray().length},"flat":{}}',
+  );
+
+  return configs;
 }
 
 class VectorQueryDocumentSnapshot extends DocumentSnapshot {
@@ -1103,15 +1142,141 @@ Map<String, dynamic> convertMapValuesRecursive(
     Map<String, dynamic>.from(
         convertValueRecursive(map, converter) as Map<String, dynamic>);
 
-class VectorValue {
-  const VectorValue(this._value);
+const String vectorValueMagicTypeKey = 'magic\$type';
+const String vectorValueMagicTypeValue = 'vector';
+const String vectorValueDataKey = 'vector';
 
-  final List<double> _value;
+List<double> normalizeVectorNumbers(dynamic value) {
+  if (value == null) {
+    return const <double>[];
+  }
+
+  if (value is List) {
+    return value.cast<num>().map((item) => item.toDouble()).toList();
+  }
+
+  throw ArgumentError(
+    'Vector values must be a List<num>, got ${value.runtimeType}',
+  );
+}
+
+bool isSerializedVectorValue(dynamic value) {
+  if (value is! Map) {
+    return false;
+  }
+
+  dynamic vector = value[vectorValueDataKey];
+  return value[vectorValueMagicTypeKey] == vectorValueMagicTypeValue &&
+      vector is List &&
+      vector.every((item) => item is num);
+}
+
+VectorValue vectorValueFromSerializedMap(Map value) => VectorValue(
+      magic$type: (value[vectorValueMagicTypeKey] as String?) ??
+          vectorValueMagicTypeValue,
+      vector: normalizeVectorNumbers(value[vectorValueDataKey]),
+    );
+
+dynamic convertSerializedVectorValuesToRuntime(dynamic value) {
+  if (isSerializedVectorValue(value)) {
+    return vectorValueFromSerializedMap(value as Map);
+  }
+
+  if (value is Map) {
+    return Map<dynamic, dynamic>.fromEntries(
+      value.entries.map(
+        (entry) => MapEntry(
+          entry.key,
+          convertSerializedVectorValuesToRuntime(entry.value),
+        ),
+      ),
+    );
+  }
+
+  if (value is List) {
+    return value.map(convertSerializedVectorValuesToRuntime).toList();
+  }
+
+  return value;
+}
+
+dynamic convertRuntimeVectorValuesToSerialized(dynamic value) {
+  if (value is VectorValue) {
+    return value.toMap();
+  }
+
+  if (value is Map) {
+    return Map<dynamic, dynamic>.fromEntries(
+      value.entries.map(
+        (entry) => MapEntry(
+          entry.key,
+          convertRuntimeVectorValuesToSerialized(entry.value),
+        ),
+      ),
+    );
+  }
+
+  if (value is List) {
+    return value.map(convertRuntimeVectorValuesToSerialized).toList();
+  }
+
+  return value;
+}
+
+Map<String, dynamic> convertRuntimeVectorMapToSerialized(
+        Map<String, dynamic> map) =>
+    Map<String, dynamic>.from(
+      convertRuntimeVectorValuesToSerialized(map) as Map,
+    );
+
+Map<String, dynamic> convertSerializedVectorMapToRuntime(
+        Map<String, dynamic> map) =>
+    Map<String, dynamic>.from(
+      convertSerializedVectorValuesToRuntime(map) as Map,
+    );
+
+@artifact
+class VectorValue {
+  final String magic$type;
+  final List<double> vector;
+
+  const VectorValue({
+    this.magic$type = vectorValueMagicTypeValue,
+    this.vector = const [],
+  });
 
   @override
-  String toString() => 'VectorValue(value: $_value)';
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
 
-  List<double> toArray() => _value;
+    if (other is! VectorValue || other.magic$type != magic$type) {
+      return false;
+    }
+
+    List<double> values = toArray();
+    List<double> otherValues = other.toArray();
+    return otherValues.length == values.length &&
+        Iterable<int>.generate(values.length)
+            .every((index) => otherValues[index] == values[index]);
+  }
+
+  @override
+  int get hashCode => Object.hash(magic$type, Object.hashAll(toArray()));
+
+  @override
+  String toString() => 'VectorValue(vector: ${toArray()})';
+
+  List<double> toArray() => normalizeVectorNumbers(vector);
+
+  Map<String, dynamic> toMap() => {
+        vectorValueMagicTypeKey: magic$type,
+        vectorValueDataKey: toArray(),
+      };
+
+  static VectorValue fromMap(Map<String, dynamic> map) =>
+      vectorValueFromSerializedMap(map);
 }
 
 enum FieldValueType {

@@ -1,3 +1,16 @@
+# 1.7.4
+* Fix implicit vector score field naming so nearest-neighbor queries no longer use a Firestore-reserved field name
+* Improve shared vector helpers to normalize numeric vectors safely and tolerate cast-backed numeric lists
+* Add shared vector index field-config inference so missing-index hints include prefilter fields as well as the vector field
+
+# 1.7.1
+* Only show `$VectorValue` in artifact exports
+
+# 1.7.0
+* Make `VectorValue` an artifact-backed model with `magic$type` and `vector` fields for serializer-friendly round-tripping
+* Export generated artifact helpers for `VectorValue` and add shared sentinel-map conversion utilities
+* Support artifact/json-style serialized vector maps while still translating vectors correctly at Firestore boundaries
+
 # 1.6.0
 * Add ranked vector query results with `VectorQueryDocumentSnapshot.rank` and `.score`
 * Automatically request and capture vector distance scores without leaking implicit score fields into returned document data

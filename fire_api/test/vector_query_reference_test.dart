@@ -11,7 +11,7 @@ void main() {
       List<VectorQueryDocumentSnapshot> results = await reference
           .findNearest(
             vectorField: 'embedding_field',
-            queryVector: const VectorValue([1, 2, 3]),
+            queryVector: const VectorValue(vector: [1, 2, 3]),
             limit: 3,
             distanceMeasure: VectorDistanceMeasure.euclidean,
             distanceResultField: 'vector_distance',
@@ -42,7 +42,7 @@ void main() {
           .collection('items')
           .findNearest(
             vectorField: 'embedding_field',
-            queryVector: const VectorValue([1, 2, 3]),
+            queryVector: const VectorValue(vector: [1, 2, 3]),
             limit: 3,
             distanceMeasure: VectorDistanceMeasure.euclidean,
           )
@@ -66,7 +66,7 @@ void main() {
       expect(
         () => db.collection('items').limit(10).findNearest(
               vectorField: 'embedding_field',
-              queryVector: const VectorValue([1, 2, 3]),
+              queryVector: const VectorValue(vector: [1, 2, 3]),
               limit: 3,
               distanceMeasure: VectorDistanceMeasure.euclidean,
             ),

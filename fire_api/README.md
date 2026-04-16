@@ -151,10 +151,10 @@ final ids = await FirestoreDatabase.instance
 ```dart
 await FirestoreDatabase.instance.collection("items").doc("one").set({
   "title": "Example",
-  "embedding": const VectorValue([0.2, 0.4, 0.6]),
+  "embedding": const VectorValue(vector: [0.2, 0.4, 0.6]),
   "nested": {
     "history": [
-      const VectorValue([1, 2, 3]),
+      const VectorValue(vector: [1, 2, 3]),
     ],
   },
 });
@@ -173,7 +173,7 @@ final docs = await FirestoreDatabase.instance
     .whereEqual("color", "red")
     .findNearest(
       vectorField: "embedding",
-      queryVector: const VectorValue([0.2, 0.4, 0.6]),
+      queryVector: const VectorValue(vector: [0.2, 0.4, 0.6]),
       limit: 5,
       distanceMeasure: VectorDistanceMeasure.cosine,
       distanceResultField: "vector_distance",

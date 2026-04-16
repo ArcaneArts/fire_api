@@ -108,11 +108,11 @@ dynamic _convertValueRecursive(
 
 dynamic _decodeFirestoreValue(dynamic value) => _convertValueRecursive(
       value,
-      (x) => x is cf.VectorValue ? VectorValue(x.toArray()) : x,
+      (x) => x is cf.VectorValue ? VectorValue(vector: x.toArray()) : x,
     );
 
 dynamic _encodeFirestoreValue(dynamic value) => _convertValueRecursive(
-      value,
+      convertSerializedVectorValuesToRuntime(value),
       (x) => x is VectorValue ? cf.VectorValue(x.toArray()) : x,
     );
 
@@ -636,9 +636,9 @@ extension _XObjectVectorQueryFailure on Object {
     }
 
     String collectionGroup = reference.reference.path.split('/').last;
-    String fieldConfig =
-        'field-path=${reference.vectorField},vector-config={"dimension":${reference.queryVector.toArray().length},"flat":{}}'
-            .shellSingleQuoted;
+    List<String> fieldConfigs = buildVectorIndexFieldConfigs(reference)
+        .map((config) => '--field-config=${config.shellSingleQuoted}')
+        .toList();
     String command = [
       'gcloud firestore indexes composite create',
       '--project=${projectId.shellSingleQuoted}',
@@ -646,11 +646,11 @@ extension _XObjectVectorQueryFailure on Object {
         '--database=${databaseId.shellSingleQuoted}',
       '--collection-group=${collectionGroup.shellSingleQuoted}',
       '--query-scope=collection',
-      '--field-config=$fieldConfig',
+      ...fieldConfigs,
     ].join(' ');
 
     return [
-      'Firestore vector query failed: missing vector index for collection group "$collectionGroup" on field "${reference.vectorField}".',
+      'Firestore vector query failed: missing vector index for collection group "$collectionGroup".',
       '',
       'Create it with: $command',
       '',
@@ -665,6 +665,7 @@ extension _XStringShellQuote on String {
 }
 
 Map<String, dynamic> _encodeFirestoreRestValue(dynamic value) {
+  value = convertSerializedVectorValuesToRuntime(value);
   if (value == null) {
     return {'nullValue': 'NULL_VALUE'};
   }
@@ -744,7 +745,7 @@ dynamic _decodeFirestoreRestValue(Map<String, dynamic> value) {
   if (value['vectorValue'] != null) {
     final vector = Map<String, dynamic>.from(value['vectorValue'] as Map);
     return VectorValue(
-      ((vector['values'] as List?) ?? const [])
+      vector: ((vector['values'] as List?) ?? const [])
           .map((item) => (item as num).toDouble())
           .toList(),
     );
@@ -754,7 +755,7 @@ dynamic _decodeFirestoreRestValue(Map<String, dynamic> value) {
     final fields =
         Map<String, dynamic>.from((mapValue['fields'] as Map?) ?? {});
     return VectorValue(
-      ((((fields[_firestoreVectorValueKey] as Map?)?['arrayValue']
+      vector: ((((fields[_firestoreVectorValueKey] as Map?)?['arrayValue']
                   as Map?)?['values'] as List?) ??
               const [])
           .map((item) => ((item as Map)['doubleValue'] as num).toDouble())

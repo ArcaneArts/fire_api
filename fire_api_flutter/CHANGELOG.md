@@ -1,3 +1,13 @@
+# 1.7.4
+* Fix implicit vector score field naming for nearest-neighbor queries on the Flutter adapter
+* Improve missing vector index hints so prefiltered vector queries emit accurate `gcloud firestore indexes composite create` commands
+* Align with `fire_api` 1.7.4 for the shared vector normalization and query-index helpers
+
+# 1.7.0
+* Accept artifact-style serialized `VectorValue` sentinel maps in Flutter Firestore write and query payloads
+* Keep Flutter vector reads decoding back into the shared `VectorValue` model while preserving native Firestore vector storage
+* Align with `fire_api` 1.7.0's artifact-backed vector serialization flow
+
 # 1.6.0
 * Support ranked vector query results with automatic score capture from Firestore nearest-neighbor queries
 * Keep implicit vector score fields out of returned document data while exposing them through the shared API

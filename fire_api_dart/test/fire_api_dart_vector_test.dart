@@ -127,10 +127,10 @@ void main() {
       );
 
       await db.setDocument(db.collection('users').doc('alice'), {
-        'embedding': const VectorValue([9, 8, 7]),
+        'embedding': const VectorValue(vector: [9, 8, 7]),
         'nested': {
           'items': [
-            const VectorValue([1, 2]),
+            const VectorValue(vector: [1, 2]),
           ],
         },
       });
@@ -150,6 +150,32 @@ void main() {
           },
         },
       );
+    });
+
+    test('setDocument accepts serialized vector sentinel maps', () async {
+      late Map<String, dynamic> body;
+      MockClient client = MockClient((request) async {
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          '{}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      GoogleCloudFirestoreDatabase db = GoogleCloudFirestoreDatabase(
+        FirestoreApi(client),
+        'demo-project',
+        client: client,
+      );
+
+      await db.setDocument(db.collection('users').doc('alice'), {
+        'embedding': const VectorValue(vector: [6, 7]).toMap(),
+      });
+
+      Map<String, dynamic> fields = (body['writes'] as List).single['update']
+          ['fields'] as Map<String, dynamic>;
+      expect(fields['embedding'], _vectorJson([6, 7]));
     });
 
     test('updateDocument encodes vector values inside array transforms',
@@ -172,7 +198,7 @@ void main() {
 
       await db.updateDocument(db.collection('users').doc('alice'), {
         'history': FieldValue.arrayUnion([
-          const VectorValue([4, 5])
+          const VectorValue(vector: [4, 5])
         ]),
       });
 
@@ -238,7 +264,7 @@ void main() {
           (data) {
         expect((data!['embedding'] as VectorValue).toArray(), [1.0, 2.0]);
         return {
-          'embedding': const VectorValue([3, 4]),
+          'embedding': const VectorValue(vector: [3, 4]),
         };
       });
 
@@ -312,7 +338,7 @@ void main() {
           .whereEqual('color', 'red')
           .findNearest(
             vectorField: 'embedding_field',
-            queryVector: const VectorValue([3, 1, 2]),
+            queryVector: const VectorValue(vector: [3, 1, 2]),
             limit: 5,
             distanceMeasure: VectorDistanceMeasure.euclidean,
             distanceResultField: 'vector_distance',
@@ -365,7 +391,7 @@ void main() {
           .collection('items')
           .findNearest(
             vectorField: 'embedding_field',
-            queryVector: const VectorValue([3, 1, 2]),
+            queryVector: const VectorValue(vector: [3, 1, 2]),
             limit: 5,
             distanceMeasure: VectorDistanceMeasure.euclidean,
           )
@@ -408,9 +434,10 @@ void main() {
       try {
         await db
             .collection('vectors')
+            .whereEqual('lod', 1)
             .findNearest(
               vectorField: 'vector',
-              queryVector: VectorValue(List<double>.filled(768, 0.0)),
+              queryVector: VectorValue(vector: List<double>.filled(768, 0.0)),
               limit: 5,
               distanceMeasure: VectorDistanceMeasure.cosine,
             )
@@ -418,6 +445,12 @@ void main() {
         fail('Expected get() to throw');
       } catch (error) {
         String message = error.toString();
+        expect(
+          message,
+          contains(
+            '--field-config=\'order=ASCENDING,field-path=lod\'',
+          ),
+        );
         expect(
           message,
           contains(
