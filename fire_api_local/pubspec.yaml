@@ -1,0 +1,12 @@
+name: fire_api_local
+description: A pure Dart SQLite-backed fire_api implementation for local Firestore-style documents, queries, streams, storage, and vector search.
+version: 1.0.0
+repository: https://github.com/ArcaneArts/fire_api/fire_api_local
+environment:
+  sdk: ^3.11.0
+dependencies:
+  fire_api: ">=1.7.4"
+  sqlite3: ">=2.4.0 <3.0.0"
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6

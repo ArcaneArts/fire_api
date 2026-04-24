@@ -1,7 +1,9 @@
 # 1.7.4
 * Fix implicit vector score field naming so nearest-neighbor queries no longer use a Firestore-reserved field name
 * Improve shared vector helpers to normalize numeric vectors safely and tolerate cast-backed numeric lists
+* Preserve `Uint8List` byte blobs when recursively converting vector values in nested maps and lists
 * Add shared vector index field-config inference so missing-index hints include prefilter fields as well as the vector field
+* Fix `DocumentPage.nextPage()` to continue after the last document in the previous page
 
 # 1.7.1
 * Only show `$VectorValue` in artifact exports

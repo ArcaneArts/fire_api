@@ -227,7 +227,7 @@ abstract class FirestoreDatabase {
                           .endBefore(previousPage.documents.last)
                       : reference
                           .limit(pageSize)
-                          .startAfter(previousPage.documents.first)
+                          .startAfter(previousPage.documents.last)
                   : reference.limit(pageSize))
               .then((v) => v.isEmpty
                   ? null
@@ -920,9 +920,8 @@ class VectorQueryReference {
       'vectorQuery(${reference.path}, vectorField=$vectorField, limit=$limit, distanceMeasure=$distanceMeasure${distanceResultField != null ? ", distanceResultField=$distanceResultField" : ""}${distanceThreshold != null ? ", distanceThreshold=$distanceThreshold" : ""})';
 }
 
-String vectorIndexFieldConfigForClause(Clause clause) => switch (
-      clause.operator
-    ) {
+String vectorIndexFieldConfigForClause(Clause clause) =>
+    switch (clause.operator) {
       ClauseOperator.arrayContains ||
       ClauseOperator.arrayContainsAny =>
         'array-config=CONTAINS,field-path=${clause.field}',
@@ -1193,6 +1192,10 @@ dynamic convertSerializedVectorValuesToRuntime(dynamic value) {
     );
   }
 
+  if (value is Uint8List) {
+    return value;
+  }
+
   if (value is List) {
     return value.map(convertSerializedVectorValuesToRuntime).toList();
   }
@@ -1214,6 +1217,10 @@ dynamic convertRuntimeVectorValuesToSerialized(dynamic value) {
         ),
       ),
     );
+  }
+
+  if (value is Uint8List) {
+    return value;
   }
 
   if (value is List) {

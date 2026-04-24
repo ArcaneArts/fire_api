@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:fire_api/fire_api.dart';
 import 'package:test/test.dart';
 
@@ -62,6 +64,39 @@ void main() {
           'vector': <double>[4, 5],
         },
       ],
+    });
+  });
+
+  test('vector converters preserve byte blobs while walking lists', () {
+    Uint8List bytes = Uint8List.fromList(<int>[1, 2, 255]);
+
+    dynamic runtime = convertSerializedVectorValuesToRuntime(<String, dynamic>{
+      'bytes': bytes,
+      'items': <dynamic>[
+        bytes,
+        <String, dynamic>{
+          'magic\$type': 'vector',
+          'vector': <num>[4, 5],
+        },
+      ],
+    });
+    dynamic serialized =
+        convertRuntimeVectorValuesToSerialized(<String, dynamic>{
+      'bytes': bytes,
+      'items': <dynamic>[
+        bytes,
+        const VectorValue(vector: <double>[4, 5])
+      ],
+    });
+
+    expect((runtime as Map)['bytes'], same(bytes));
+    expect((runtime['items'] as List).first, same(bytes));
+    expect((runtime['items'] as List).last, const VectorValue(vector: [4, 5]));
+    expect((serialized as Map)['bytes'], same(bytes));
+    expect((serialized['items'] as List).first, same(bytes));
+    expect((serialized['items'] as List).last, <String, dynamic>{
+      'magic\$type': 'vector',
+      'vector': <double>[4, 5],
     });
   });
 
